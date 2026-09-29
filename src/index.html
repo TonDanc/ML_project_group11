@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>คาดการณ์วันจัดส่ง</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; color: #243047; background: #f4f7fb; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 32px 16px; }
+    main { max-width: 850px; margin: auto; background: white; border-radius: 18px; padding: 32px; box-shadow: 0 8px 30px #1d35571a; }
+    h1 { margin: 0 0 8px; font-size: 2rem; }
+    p { color: #5c6678; }
+    fieldset { border: 1px solid #dce3ec; border-radius: 12px; margin: 24px 0; padding: 20px; }
+    legend { font-weight: 700; padding: 0 8px; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    label { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: .95rem; }
+    input, select { width: 100%; padding: 10px 12px; border: 1px solid #b9c5d4; border-radius: 8px; font: inherit; background: white; }
+    input:focus, select:focus { outline: 2px solid #3974d8; outline-offset: 1px; }
+    button { border: 0; border-radius: 9px; padding: 12px 24px; color: white; background: #2469cf; font: inherit; font-weight: 700; cursor: pointer; }
+    button:disabled { opacity: .6; cursor: wait; }
+    #result { margin-top: 22px; padding: 18px; border-radius: 10px; background: #e9f5ee; color: #14532d; font-size: 1.15rem; }
+    #result.error { background: #fff0ef; color: #a12424; }
+    [hidden] { display: none !important; }
+    @media (max-width: 600px) { main { padding: 20px; } .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>คาดการณ์เวลาจัดส่ง</h1>
+    <p>กรอกข้อมูลคำสั่งซื้อในบราซิล แล้วกดทำนายเพื่อดูจำนวนวันจัดส่งโดยประมาณ ข้อมูลตัวอย่างใส่ไว้ให้ลองใช้งานได้ทันที</p>
+    <form id="order-form">
+      <fieldset>
+        <legend>ปลายทางและผู้ขาย</legend>
+        <div class="grid">
+          <label>รัฐของลูกค้า <input name="customer_state" value="SP" maxlength="2" required title="รหัสรัฐบราซิล 2 ตัวอักษร เช่น SP"></label>
+          <label>รัฐของผู้ขาย <input name="seller_state" value="SP" maxlength="2" required title="รหัสรัฐบราซิล 2 ตัวอักษร เช่น SP"></label>
+          <label>ละติจูดลูกค้า <input name="customer_lat" type="number" step="any" value="-23.5" required></label>
+          <label>ลองจิจูดลูกค้า <input name="customer_lng" type="number" step="any" value="-46.6" required></label>
+          <label>ละติจูดผู้ขาย <input name="seller_lat" type="number" step="any" value="-23.6" required></label>
+          <label>ลองจิจูดผู้ขาย <input name="seller_lng" type="number" step="any" value="-46.7" required></label>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>รายละเอียดคำสั่งซื้อ</legend>
+        <div class="grid">
+          <label>จำนวนผู้ขาย <input name="n_sellers" type="number" min="1" max="20" step="1" value="1" required></label>
+          <label>จำนวนสินค้า <input name="n_items" type="number" min="1" max="100" step="1" value="2" required></label>
+          <label>ราคาสินค้ารวม (BRL) <input name="total_price" type="number" min="0.01" step="any" value="100" required></label>
+          <label>ค่าขนส่งรวม (BRL) <input name="total_freight" type="number" min="0" step="any" value="15" required></label>
+          <label>น้ำหนักรวม (กรัม) <input name="total_weight_g" type="number" min="0" max="500000" step="any" value="800" required></label>
+          <label>กำหนดส่งเดิม (วัน) <input name="estimated_delivery_days" type="number" min="0" max="200" step="1" value="10" required></label>
+          <label>วันและเวลาที่สั่งซื้อ <input name="order_purchase_timestamp" type="datetime-local" value="2018-05-01T10:00" required></label>
+        </div>
+      </fieldset>
+      <button type="submit">ทำนายเวลาจัดส่ง</button>
+    </form>
+    <div id="result" role="status" aria-live="polite" hidden></div>
+  </main>
+  <script>
+    const form = document.getElementById('order-form');
+    const result = document.getElementById('result');
+    const button = form.querySelector('button');
+    const numberFields = new Set(['customer_lat', 'customer_lng', 'seller_lat', 'seller_lng', 'n_sellers', 'n_items', 'total_price', 'total_freight', 'total_weight_g', 'estimated_delivery_days']);
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      button.disabled = true;
+      result.hidden = true;
+      const payload = Object.fromEntries(new FormData(form));
+      for (const key of numberFields) payload[key] = Number(payload[key]);
+      payload.customer_state = payload.customer_state.trim().toUpperCase();
+      payload.seller_state = payload.seller_state.trim().toUpperCase();
+      try {
+        const response = await fetch('/predict', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const data = await response.json();
+        if (!response.ok) throw new Error(response.status === 422 ? 'ข้อมูลบางช่องไม่ถูกต้อง กรุณาตรวจรหัสรัฐ พิกัด และช่วงค่าตัวเลข' : 'ระบบทำนายไม่พร้อมใช้งาน');
+        result.classList.remove('error');
+        result.textContent = `คาดว่าจะจัดส่งภายใน ${data.predicted_delivery_days.toFixed(1)} วัน`;
+      } catch (error) {
+        result.classList.add('error');
+        result.textContent = error.message || 'เชื่อมต่อ API ไม่สำเร็จ';
+      } finally {
+        result.hidden = false;
+        button.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
