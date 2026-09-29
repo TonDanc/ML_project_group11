@@ -1,0 +1,8 @@
+.git
+raw_data + Data prepair/
+cleaned_data/*
+!cleaned_data/feature extraction/
+!cleaned_data/feature extraction/shipping_distance_duration.csv
+models/
+**/__pycache__/
+*.ipynb
