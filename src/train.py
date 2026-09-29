@@ -7,7 +7,6 @@ so serving loads one object and applies exactly the same transforms.
 import os
 
 import joblib
-import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.dummy import DummyRegressor
@@ -18,25 +17,12 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer, OneHotEncoder
 
 from schema import input_schema
+from features import add_features
 
 DATA_PATH = 'cleaned_data/feature extraction/shipping_distance_duration.csv'
 MODEL_PATH = 'models/model.joblib'
 TARGET = 'delivery_days'
 CAT_COLS = ['customer_state', 'seller_state']
-
-
-def add_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Derive features from raw inputs. Runs inside the Pipeline -> same at train and serve."""
-    df = df.copy()
-    lat1, lng1, lat2, lng2 = map(np.radians, [df.customer_lat, df.customer_lng, df.seller_lat, df.seller_lng])
-    a = np.sin((lat2 - lat1) / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin((lng2 - lng1) / 2) ** 2
-    df['distance_km'] = 2 * 6371 * np.arcsin(np.sqrt(a))
-    df['same_state'] = (df.customer_state == df.seller_state).astype(int)
-    ts = df.pop('order_purchase_timestamp')
-    df['purchase_dow'] = ts.dt.dayofweek
-    df['purchase_month'] = ts.dt.month
-    df['purchase_hour'] = ts.dt.hour
-    return df
 
 
 def make_pipeline(model) -> Pipeline:
