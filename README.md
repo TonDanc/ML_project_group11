@@ -194,6 +194,8 @@ python src/registry.py promote         # ด่านตรวจ: ผ่าน 
 python src/registry.py rollback [VER]  # @champion ย้อนไปเวอร์ชันก่อนหน้าที่เคยผ่านด่าน (หรือ VER)
 ```
 
+ถ้าใช้ Docker ให้ขึ้นต้นด้วย `docker compose run --rm train` เช่น `docker compose run --rm train python src/registry.py status`
+
 ด่านตรวจก่อนอนุมัติ (Gating Metric) วัดบน test ชุดเดียวกันทั้งตัวใหม่และตัวเดิม ต้องผ่านทุกข้อ:
 - MAE ต่ำกว่า dummy (median)
 - MAE ต่ำกว่า `@champion` ตัวเดิมอย่างน้อย 5%
@@ -213,6 +215,11 @@ docker compose up -d api && curl localhost:8000/health    # version 2
 docker compose run --rm train python src/registry.py rollback   # @champion v2 -> v1
 docker compose restart api && curl localhost:8000/health  # version 1
 ```
+
+PowerShell: บรรทัดที่ 2 ใช้ `$env:CANDIDATES = "dummy_median,linear_regression"; docker compose run --rm train`
+แล้ว `$env:CANDIDATES = ""` ก่อนรันบรรทัดที่ 3 ไม่งั้นจะเทรนแค่ linear อีก และใช้ `curl.exe` แทน `curl`
+
+ดูผลใน MLflow UI ที่ http://localhost:5050 (Experiments → `delivery_eta` เทียบ run, Models → `delivery_eta` ดูเวอร์ชันและ alias)
 
 ### `test_schema.py` — เช็คว่า schema ทำงาน
 
