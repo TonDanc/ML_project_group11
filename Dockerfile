@@ -10,7 +10,7 @@ COPY src/ src/
 
 COPY ["cleaned_data/feature extraction/shipping_distance_duration.csv", "cleaned_data/feature extraction/shipping_distance_duration.csv"]
 
-RUN python src/train.py && rm -rf cleaned_data
+# no training at build time: the model comes from the MLflow registry (@champion), see docker-compose.yml
 
 EXPOSE 8000
 

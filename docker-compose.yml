@@ -1,0 +1,38 @@
+# docker compose up -d mlflow                     # tracking server + registry UI: http://localhost:5050
+# docker compose run --rm train                   # train -> log runs -> register @challenger -> gate -> @champion
+# docker compose up -d api                        # serves @champion: http://localhost:8000
+# docker compose run --rm train python src/registry.py rollback   # then: docker compose restart api
+services:
+  mlflow:
+    build: .
+    image: delivery-eta
+    command: >
+      mlflow server --host 0.0.0.0 --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --artifacts-destination /mlflow/artifacts
+      --allowed-hosts "*"
+    ports: ["5050:5000"]
+    volumes: [mlflow-data:/mlflow]
+
+  train:
+    build: .
+    image: delivery-eta
+    command: sh -c "python src/train.py && python src/registry.py promote"
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      GIT_COMMIT: ${GIT_COMMIT:-unknown}
+      GIT_PYTHON_REFRESH: quiet  # no git binary in the image; commit comes from GIT_COMMIT
+      CANDIDATES: ${CANDIDATES:-}
+    depends_on: [mlflow]
+    profiles: [job]  # not started by a plain `docker compose up`
+
+  api:
+    build: .
+    image: delivery-eta
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    ports: ["8000:8000"]
+    depends_on: [mlflow]
+
+volumes:
+  mlflow-data:

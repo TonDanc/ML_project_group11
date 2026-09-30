@@ -5,3 +5,4 @@ joblib==1.5.3
 pandera==0.33.1
 fastapi==0.115.12
 uvicorn==0.34.2
+mlflow==3.16.1

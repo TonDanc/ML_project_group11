@@ -33,13 +33,28 @@ dataset ไม่มีข้อมูลบริษัทขนส่ง ค�
 
 ## วิธีรัน
 
+### แบบ Docker (เครื่องเปล่า มีแค่ Docker)
+
+```bash
+docker compose up -d mlflow        # MLflow UI: http://localhost:5050
+docker compose run --rm train      # เทรน -> log ลง MLflow -> register @challenger -> ด่านตรวจ -> @champion
+docker compose up -d api           # API ใช้โมเดล @champion: http://localhost:8000 (/docs, /health)
+```
+
+ใส่ `GIT_COMMIT=$(git rev-parse HEAD)` หน้าคำสั่ง `train` ด้วย เพื่อให้ run บันทึกเวอร์ชันโค้ดได้ (ใน container ไม่มี .git)
+
+### แบบรันในเครื่อง (Python 3.11)
+
 ```bash
 pip install -r requirements.txt
-python src/test_schema.py   # เช็คว่า schema ปฏิเสธข้อมูลเสียได้
-python src/train.py         # เทรนโมเดล -> models/model.joblib
+python src/test_schema.py        # เช็คว่า schema ปฏิเสธข้อมูลเสียได้
+python src/train.py              # log ลง ./mlflow.db (ไม่ต้องเปิด server)
+python src/registry.py promote
+mlflow ui --backend-store-uri sqlite:///mlflow.db   # ดูผล
 ```
 
 รันจากโฟลเดอร์หลักของ repo เพราะ path ข้อมูลเขียนแบบ relative
+ถ้าตั้ง `MLFLOW_TRACKING_URI` ไว้ ทุกสคริปต์จะใช้ server นั้นแทน `mlflow.db`
 
 ## โครงสร้าง
 
@@ -48,8 +63,10 @@ raw_data + Data prepair/   ข้อมูลดิบ + notebook/สคริ�
 cleaned_data/              ข้อมูลที่ clean แล้ว
   feature extraction/      shipping_distance_duration.csv (1 แถว = 1 order) <- ใช้เทรน
 src/                       โค้ดโมเดล (ด้านล่าง)
-models/                    โมเดลที่เทรนแล้ว (ไม่ commit, สร้างใหม่ด้วย train.py)
+docker-compose.yml         mlflow (server), train (job), api
 ```
+
+โมเดลที่เทรนแล้วอยู่ใน MLflow Registry ไม่ได้ commit ลง git
 
 ## ไฟล์ใน `src/`
 
@@ -82,21 +99,24 @@ models/                    โมเดลที่เทรนแล้ว (ไ
 2. ตัด 503 แถวที่ไม่มีพิกัด (zip code ไม่ตรงกับตาราง geolocation) ไม่ impute เพราะตอนใช้งานจริง payload แบบนี้ก็ไม่ผ่าน schema อยู่แล้ว
 3. ตรวจข้อมูลด้วย `input_schema` ถ้าไม่ผ่านสคริปต์จะหยุดก่อนเทรน
 4. แบ่งข้อมูลตามเวลาสั่งซื้อ (`time_split`) เป็น train/val/test 70/15/15 เพื่อให้โมเดลเรียนจากอดีตแล้วทดสอบกับอนาคต
-5. เทรน 3 โมเดลโดยไม่ทำ Hyperparameter Tuning:
-   - `DummyRegressor` ทายค่า median ทุกครั้ง ใช้เป็นเกณฑ์ขั้นต่ำ โมเดลจริงต้องชนะตัวนี้ให้ได้
-   - `LinearRegression`
-   - `HistGradientBoostingRegressor(loss='absolute_error')` ปรับให้ MAE ต่ำสุดโดยตรง เหมาะกับ target ที่เบ้ขวา (ส่วนใหญ่ 7–13 วัน แต่ค่าสูงสุดถึง 208 วัน)
-6. พิมพ์ MAE/RMSE เทียบกับค่าประมาณเดิมของ Olist (`estimated_delivery_days`) ซึ่งใช้แทน "โมเดลปัจจุบัน"
-7. บันทึก HistGradientBoosting เป็น `models/model.joblib` (ขนาดประมาณ 0.4 MB)
+5. เทรน 4 โมเดล แต่ละตัวเป็น 1 run ใน MLflow (experiment `delivery_eta`):
+   - `dummy_median` (`DummyRegressor`) ทายค่า median ทุกครั้ง ใช้เป็นเกณฑ์ขั้นต่ำ โมเดลจริงต้องชนะตัวนี้ให้ได้
+   - `linear_regression`
+   - `hgb_default`: `HistGradientBoostingRegressor(loss='absolute_error')` ปรับให้ MAE ต่ำสุดโดยตรง เหมาะกับ target ที่เบ้ขวา (ส่วนใหญ่ 7–13 วัน แต่ค่าสูงสุดถึง 208 วัน)
+   - `hgb_bigger`: HGB ที่ใหญ่ขึ้น (`max_iter=300, learning_rate=0.05, max_leaf_nodes=63`) เพื่อทดสอบว่า tuning ช่วยไหม
+6. พิมพ์ MAE ของค่าประมาณเดิมของ Olist (`estimated_delivery_days`) ไว้อ้างอิง
+7. เลือกตัวที่ **val** MAE ต่ำสุด (ไม่เลือกจาก test) แล้วลงทะเบียนเป็นเวอร์ชันใหม่ของ `delivery_eta` พร้อมติดป้าย `@challenger`
+
+ตั้ง `CANDIDATES=dummy_median,linear_regression` เพื่อเทรนเฉพาะบางตัวได้ (ใช้สร้างโมเดล "รุ่นเก่า" ตอนสาธิต rollback)
 
 ฟังก์ชันหลัก
 
 - `add_features(df)` สร้างฟีเจอร์จากข้อมูลดิบ ได้แก่ `distance_km` (ระยะทางเส้นตรงแบบ haversine), `same_state`, `purchase_dow`, `purchase_month` และ `purchase_hour`
 - `make_pipeline(model)` รวม `add_features`, one-hot encoding ของรัฐ และโมเดล ไว้ใน sklearn `Pipeline` ตัวเดียว
 - `time_split(df)` แบ่งข้อมูลตามเวลา
-- `report(...)` พิมพ์ MAE/RMSE
+- `load_splits()` โหลด ตรวจ schema และแบ่งข้อมูล (`registry.py` ใช้ตัวเดียวกันเพื่อให้ได้ test ชุดเดียวกัน)
 
-**ป้องกัน Training-Serving Skew:** การแปลงข้อมูลทั้งหมดอยู่ใน Pipeline ที่บันทึกลงไฟล์ `.joblib` เดียว
+**ป้องกัน Training-Serving Skew:** การแปลงข้อมูลทั้งหมดอยู่ใน Pipeline ตัวเดียวที่บันทึกลง MLflow (พร้อมไฟล์ `features.py`)
 ตอนทำ API ให้ส่งข้อมูลดิบที่ผ่าน schema เข้า `pipe.predict()` ได้เลย ไม่ต้องเขียนโค้ดแปลงข้อมูลซ้ำ
 
 ผลลัพธ์ล่าสุด (MAE หน่วยเป็นวัน)
@@ -137,6 +157,61 @@ Dummy คือโมเดลที่ไม่เรียนรู้อะ�
 - ประมาณ 30% ของ order ใน test ส่งถึงช้ากว่าที่โมเดลทำนาย เพราะการปรับ MAE ให้ต่ำสุดคือการทายค่ากลาง ถ้าธุรกิจอยากลดโอกาสส่งช้ากว่าที่แจ้ง ให้เปลี่ยนเป็น `loss='quantile'` เช่น `quantile=0.8`
 - ค่า delivery_days เฉลี่ยลดลงตามเวลา (train 13.3 → val 10.4 → test 7.9 วัน) แปลว่ามี drift ตามช่วงเวลาอยู่แล้ว ควรเทรนใหม่เป็นระยะ
 
+### MLflow — Experiment Tracking + Model Registry
+
+**ทุก run บันทึกครบ 6 อย่าง**
+
+| สิ่งที่ต้องบันทึก | เก็บที่ไหนใน run |
+|---|---|
+| เวอร์ชันโค้ด | tag `git_commit` |
+| เวอร์ชันข้อมูล | param `data_md5` (md5 ของ CSV), `data_rows`, `n_train/n_val/n_test`, `split` |
+| ไฮเปอร์พารามิเตอร์ | params ทั้งหมดของโมเดล (`get_params()`) |
+| ตัวชี้วัด | `val_mae`, `val_rmse`, `test_mae`, `test_rmse` |
+| ไฟล์ผลลัพธ์ | โมเดล (`model.skops`), `features.py`, `input_example.json` |
+| สภาพแวดล้อม | tag `python`, `platform` และ `requirements.txt` / `conda.yaml` ที่ MLflow สร้างคู่กับโมเดล |
+
+เปรียบเทียบข้ามการทดลอง: เปิด MLflow UI → experiment `delivery_eta` → เลือกหลาย run → Compare
+
+**ผลการทดลองและการตัดสินใจ**
+
+| run | val MAE | test MAE | ตัดสินใจ |
+|---|---|---|---|
+| dummy_median | 5.671 | 5.057 | เกณฑ์ขั้นต่ำ |
+| linear_regression | 5.377 | 4.962 | ดีกว่า dummy นิดเดียว ความสัมพันธ์ไม่เป็นเส้นตรง |
+| **hgb_default** | **4.086** | **3.389** | **เลือกตัวนี้** |
+| hgb_bigger | 4.092 | 3.412 | ใหญ่ขึ้น ช้าขึ้น แต่ไม่ดีขึ้น → tuning ไม่คุ้ม |
+
+**`registry.py` — สถานะโมเดลและด่านตรวจ**
+
+สถานะเก็บเป็น alias ของ MLflow: `@champion` = ตัวที่ API ใช้อยู่, `@challenger` = ตัวใหม่ล่าสุดที่รอตรวจ
+และ tag ของแต่ละเวอร์ชัน: `gate` (passed/failed), `gate_reason`, `test_mae`, `p95_ms`, `rolled_back`
+
+```bash
+python src/registry.py status          # ดูทุกเวอร์ชัน
+python src/registry.py promote         # ด่านตรวจ: ผ่าน -> @champion, ไม่ผ่าน -> exit 1 (ใช้ใน CI ได้)
+python src/registry.py rollback [VER]  # @champion ย้อนไปเวอร์ชันก่อนหน้าที่เคยผ่านด่าน (หรือ VER)
+```
+
+ด่านตรวจก่อนอนุมัติ (Gating Metric) วัดบน test ชุดเดียวกันทั้งตัวใหม่และตัวเดิม ต้องผ่านทุกข้อ:
+- MAE ต่ำกว่า dummy (median)
+- MAE ต่ำกว่า `@champion` ตัวเดิมอย่างน้อย 5%
+- p95 latency ของการทำนาย 1 order < 200 ms
+
+API โหลด `@champion` ตอนเริ่มทำงาน หลัง promote/rollback ให้ `docker compose restart api`
+`/health` และ `/predict` บอกเวอร์ชันโมเดลที่ใช้อยู่
+
+**สาธิต (เริ่มจากว่าง: `docker compose down -v`)**
+
+```bash
+docker compose up -d mlflow
+CANDIDATES=dummy_median,linear_regression docker compose run --rm train   # v1 = linear "รุ่นเก่า" -> ผ่าน -> @champion
+docker compose run --rm train      # v2 = hgb, ดีกว่า v1 เกิน 5% -> ผ่าน -> @champion
+docker compose run --rm train      # v3 = เทรนซ้ำข้อมูลเดิม ไม่ดีขึ้น 5% -> REJECTED (exit 1), API ยังใช้ v2
+docker compose up -d api && curl localhost:8000/health    # version 2
+docker compose run --rm train python src/registry.py rollback   # @champion v2 -> v1
+docker compose restart api && curl localhost:8000/health  # version 1
+```
+
 ### `test_schema.py` — เช็คว่า schema ทำงาน
 
 สร้าง payload ที่ถูกต้อง 1 แถว แล้วแก้ทีละจุดเพื่อยืนยันว่า schema ปฏิเสธข้อมูลเหล่านี้ได้จริง:
@@ -148,7 +223,6 @@ Dummy คือโมเดลที่ไม่เรียนรู้อะ�
 - ตัดสินใจรูปแบบ input ของ API (โมเดลใช้พิกัดเสมอ ไม่ใช้ zip code):
   - ถ้า API รับพิกัดตรงๆ ใช้ schema ปัจจุบันได้เลย ส่วน Demo ข้อมูลเสียให้ส่ง payload ที่ขาด `customer_lat` แทน `customer_zip_code`
   - ถ้า API รับ zip code (ใกล้เคียงระบบจริงกว่า) API ต้องแปลง zip เป็นพิกัดด้วย median ต่อ zip ก่อนส่งเข้า schema และโมเดล
-- ยังไม่บันทึก metrics ลงไฟล์ จะทำตอนตั้ง MLflow
 - ยังไม่แยกช่วง Black Friday ออกไปใช้ทดสอบ Concept Drift
 - ทางเลือกเพื่อลดโอกาสส่งช้ากว่าที่แจ้ง (ถ้าทีมตัดสินใจทำ):
   - เปลี่ยนเป็น `loss='quantile', quantile=0.8`

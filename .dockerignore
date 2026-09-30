@@ -6,3 +6,6 @@ cleaned_data/*
 models/
 **/__pycache__/
 *.ipynb
+mlflow.db
+mlruns/
+mlartifacts/
