@@ -13,6 +13,10 @@ services:
       --allowed-hosts "*"
     ports: ["5050:5000"]
     volumes: [mlflow-data:/mlflow]
+    healthcheck:  # train/api wait until the server answers, not just until the container starts
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 3s
+      retries: 20
 
   train:
     build: .
@@ -23,7 +27,8 @@ services:
       GIT_COMMIT: ${GIT_COMMIT:-unknown}
       GIT_PYTHON_REFRESH: quiet  # no git binary in the image; commit comes from GIT_COMMIT
       CANDIDATES: ${CANDIDATES:-}
-    depends_on: [mlflow]
+    depends_on:
+      mlflow: {condition: service_healthy}
     profiles: [job]  # not started by a plain `docker compose up`
 
   api:
@@ -32,7 +37,8 @@ services:
     environment:
       MLFLOW_TRACKING_URI: http://mlflow:5000
     ports: ["8000:8000"]
-    depends_on: [mlflow]
+    depends_on:
+      mlflow: {condition: service_healthy}
 
 volumes:
   mlflow-data:

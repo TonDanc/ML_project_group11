@@ -94,7 +94,10 @@ def rollback(client, target=None):
 
 
 def status(client):
-    alias_of = client.get_registered_model(MODEL_NAME).aliases  # {alias: version}; search results don't carry aliases
+    try:
+        alias_of = client.get_registered_model(MODEL_NAME).aliases  # {alias: version}; search results don't carry aliases
+    except MlflowException:
+        sys.exit(f'no model {MODEL_NAME!r} registered yet, run src/train.py first')
     for v in sorted(client.search_model_versions(f"name='{MODEL_NAME}'"), key=lambda v: int(v.version)):
         aliases = ','.join('@' + a for a, ver in alias_of.items() if ver == v.version) or '-'
         tags = {k: v.tags[k] for k in ('gate', 'test_mae', 'p95_ms', 'rolled_back', 'gate_reason') if k in v.tags}

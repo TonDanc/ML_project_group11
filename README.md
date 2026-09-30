@@ -41,7 +41,9 @@ docker compose run --rm train      # เทรน -> log ลง MLflow -> regist
 docker compose up -d api           # API ใช้โมเดล @champion: http://localhost:8000 (/docs, /health)
 ```
 
-ใส่ `GIT_COMMIT=$(git rev-parse HEAD)` หน้าคำสั่ง `train` ด้วย เพื่อให้ run บันทึกเวอร์ชันโค้ดได้ (ใน container ไม่มี .git)
+ใน container ไม่มี .git ต้องส่งเวอร์ชันโค้ดเข้าไปเอง ไม่งั้น run จะบันทึก `git_commit=unknown`
+- bash: `GIT_COMMIT=$(git rev-parse HEAD) docker compose run --rm train`
+- PowerShell: `$env:GIT_COMMIT = git rev-parse HEAD; docker compose run --rm train`
 
 ### แบบรันในเครื่อง (Python 3.11)
 
