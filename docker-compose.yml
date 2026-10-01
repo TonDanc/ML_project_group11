@@ -36,6 +36,7 @@ services:
     image: delivery-eta
     environment:
       MLFLOW_TRACKING_URI: http://mlflow:5000
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}  # unset -> alerts only go to stdout/logs
     ports: ["8000:8000"]
     depends_on:
       mlflow: {condition: service_healthy}
