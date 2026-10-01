@@ -9,3 +9,5 @@ models/
 mlflow.db
 mlruns/
 mlartifacts/
+logs/
+reports/

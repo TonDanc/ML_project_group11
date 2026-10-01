@@ -101,6 +101,24 @@ models/                    โมเดลที่เทรนแล้ว (ไ
 
 โมเดลที่เทรนแล้วอยู่ใน MLflow Registry ไม่ได้ commit ลง git
 
+## สถานะโครงงานและการแบ่งงาน
+
+แผนแบ่งงาน ความเป็นเจ้าของไฟล์ ลำดับ merge และสัญญาเชื่อมต่อระหว่างงานอยู่ใน [GUIDE.md](GUIDE.md)
+
+| หน้าที่ | เครื่องมือ | สถานะ |
+|---|---|---|
+| Version Control | Git / GitHub | ใช้งานแล้ว (branch + PR) |
+| Containerization | Docker / docker-compose | ใช้งานแล้ว |
+| Data Validation | Pandera | ใช้งานแล้ว (`src/schema.py`) |
+| Experiment Tracking | MLflow | ใช้งานแล้ว |
+| Model Registry | MLflow Registry (`@champion`, gate, rollback) | ใช้งานแล้ว |
+| Model Serving | FastAPI | ใช้งานแล้ว |
+| Monitoring | Evidently / เขียนเอง | กำลังทำ (`src/monitor.py`) |
+| Pipeline Orchestration | Prefect | กำลังทำ (`src/pipeline.py`) |
+| CI/CD | GitHub Actions | กำลังทำ (`.github/workflows/`) |
+
+คำอธิบายรายละเอียดของงานที่กำลังทำจะอยู่ใน `docs/` (monitoring, pipeline, ci, serving-metrics, slack-alert, architecture, report) และจะลิงก์จาก README นี้เมื่อเสร็จ
+
 ## ไฟล์ใน `src/`
 
 ### `schema.py` — ตรวจสอบข้อมูลขาเข้า (Pandera)
@@ -269,8 +287,7 @@ PowerShell: บรรทัดที่ 2 ใช้ `$env:CANDIDATES = "dummy_me
 
 ## สิ่งที่ยังไม่ได้ทำ
 
-- ยังไม่บันทึก metrics ลงไฟล์ จะทำตอนตั้ง MLflow
-- ยังไม่แยกช่วง Black Friday ออกไปใช้ทดสอบ Concept Drift
+- ยังไม่แยกช่วง Black Friday ออกไปใช้ทดสอบ Concept Drift (กำลังทำใน `src/monitor.py` ดู GUIDE.md)
 - ทางเลือกเพื่อลดโอกาสส่งช้ากว่าที่แจ้ง (ถ้าทีมตัดสินใจทำ):
   - เปลี่ยนเป็น `loss='quantile', quantile=0.8`
   - หรือเทรน 2 ตัว (quantile 0.2 และ 0.8) แล้วแสดง ETA เป็นช่วงวันที่
