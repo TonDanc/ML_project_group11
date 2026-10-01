@@ -1,6 +1,26 @@
 # GUIDE — แบ่งงานโครงงาน "สินค้าจะมาถึงเมื่อไหร่" (CP413008)
 
-เอกสารนี้คือแผนทำงานของกลุ่ม อ่านส่วน 0 ถึง 3 ทุกคน แล้วข้ามไปอ่านส่วนของตัวเอง (ส่วน 4)
+## เริ่มที่นี่ (อ่านแค่หน้านี้ก็รู้ว่าต้องทำอะไรเป็นอย่างแรก)
+
+| คน | งานของคุณ | Branch | ก้าวแรก (ทำคืนนี้ 2 ต.ค.) | ส่ง PR ภายใน | อ่านต่อ |
+|---|---|---|---|---|---|
+| **tharathep-kku** | ตรวจ PR, รวมระบบ, README | `scaffold` → `integration` | push `scaffold` แล้ว merge | อา. 4 | 4.1 |
+| **manatsanun** | test case, `/metrics`, logging, load test | `test-cases` → `serving-metrics` | ทำ `tests/cases/*.json` + `tests/check_cases.py` (CI รออยู่) | `test-cases` คืนนี้, `serving-metrics` ส. 3 | 4.2 |
+| **thirawatv-sketch** | Slack alert, CI/CD | `slack-alert` → `ci` | สร้าง Slack webhook, เติม `src/alerts.py` | `slack-alert` ส. 3, `ci` ส. 3 เย็น | 4.3 |
+| **keerati-chawong** | Monitoring และ drift | `monitoring` | เขียน `src/monitor.py` ใช้ val split เป็น `--current` ไปก่อน | ส. 3 เย็น | 4.4 |
+| **Phonnatcha-kku** | Pipeline แบบ DAG | `dag` | ติดตั้ง Prefect, ทำ task validate → train → gate | ส. 3 เย็น | 4.5 |
+| **TonDanc** | ข้อมูล Demo, แผนภาพ, รายงาน | `report-demo` | เขียน `demo_data/make_demo_data.py` (keerati กับ Phonnatcha รออยู่) | `demo_data` คืนนี้, รายงาน อา. 4 | 4.6 |
+
+**3 ข้อที่ต้องจำ:**
+1. แก้เฉพาะไฟล์ของตัวเอง (ตารางส่วน 1) ไฟล์ส่วนกลาง (`README.md`, `requirements.txt`, `Dockerfile`, `docker-compose.yml`, `train.py` ฯลฯ) ให้ขอ tharathep
+2. ห้าม push ตรงเข้า `main` ทำผ่าน PR ทุกครั้ง
+3. ก่อนเปิด PR ให้รัน "ตรวจก่อนเปิด PR" ของตัวเองให้ผ่าน
+
+อยากรู้ว่า **ใครรอใคร** ดูส่วน 5, อยากรู้ **ชื่อฟังก์ชัน/คีย์ JSON/exit code ที่ต้องตรงกัน** ดูส่วน 3, อยากรู้ **เกณฑ์คะแนนอยู่ตรงไหน** ดูส่วน 6
+
+---
+
+## ข้อมูลทั่วไป
 
 - **ส่งงาน:** อา. 4 ต.ค. 2569 เย็น (กำหนดจริงคือ จ. 5 ต.ค. 23:59 ใช้ จ. 5 เป็นวันสำรองเท่านั้น)
 - **นำเสนอ:** จ. 12 ต.ค. 2569 08:30 (12 นาที + ถามตอบ 3 นาที)
