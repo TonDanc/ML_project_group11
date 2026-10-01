@@ -7,6 +7,20 @@
 - **ตอนนี้ main มีอะไรแล้ว:** Git/PR, Pandera schema, train + MLflow tracking, registry + gate + rollback, FastAPI, Dockerfile, docker-compose
 - **ที่ยังขาด (คือสิ่งที่แบ่งในเอกสารนี้):** Monitoring/drift, DAG, CI/CD, `/metrics` + load test, Slack alert, test case, รายงาน + แผนภาพ
 
+### ตารางความคืบหน้า (ใครทำเสร็จให้ติ๊ก `[x]` ใน PR ของตัวเอง)
+
+- [x] `scaffold` — `alerts.py` stub, `SLACK_WEBHOOK_URL` ใน compose, ignore `logs/` `reports/`, GUIDE.md, ส่วนสถานะใน README (tharathep-kku เปิด PR)
+- [ ] `test-cases` — manatsanun
+- [ ] `serving-metrics` — manatsanun
+- [ ] `slack-alert` — thirawatv-sketch
+- [ ] `ci` — thirawatv-sketch
+- [ ] `monitoring` — keerati-chawong
+- [ ] `dag` — Phonnatcha-kku
+- [ ] `report-demo` — TonDanc
+- [ ] `integration` — tharathep-kku
+
+**เรื่อง README:** ส่วน "สถานะโครงงานและการแบ่งงาน" ใส่ไว้ใน PR `scaffold` แล้ว ส่วนที่เหลือ (ลิงก์ `docs/*.md` ที่เสร็จ, เหตุผลเลือกเครื่องมือ, อัปเดตตารางสถานะเป็น "ใช้งานแล้ว") tharathep จะทำใน PR `integration` ตอนท้าย ไม่มีใครต้องแตะ README เอง
+
 ---
 
 ## 0. กฎเหล็ก 6 ข้อเพื่อไม่ให้ชนกัน
@@ -175,7 +189,9 @@ def notify_validation_failure(detail: str, payload: dict | None = None) -> None:
 
 ### 4.1 tharathep-kku — scaffold, ตรวจ PR, integration
 
-**PR 1: `scaffold` (ทำคืนนี้ ภายใน 1 ชั่วโมง ทุกคนรอ PR นี้)**
+**PR 1: `scaffold` (เขียนเสร็จและ commit ในเครื่องแล้ว เหลือ push + เปิด PR + merge คืนนี้ ทุกคนรอ PR นี้)**
+
+ข้อ 1 ถึง 3 ด้านล่างทำเสร็จแล้วใน branch `scaffold` (ข้อ 4 ยังไม่ต้องทำ) รวมทั้งเพิ่มส่วนสถานะใน README และไฟล์ GUIDE.md ด้วย
 
 1. `src/alerts.py` stub ตามสัญญา A:
    ```python
