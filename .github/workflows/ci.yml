@@ -1,4 +1,4 @@
-name: CI
+name: CI red-data (TEST ONLY)
 
 on:
   pull_request:
@@ -71,7 +71,19 @@ jobs:
       - name: Install project dependencies
         run: python -m pip install -r requirements.txt -r requirements-dev.txt
       - name: Check schema rejects invalid data
-        run: python src/test_schema.py
+        run: |
+          python - <<'PY'
+          import runpy
+          import sys
+
+          sys.path.insert(0, "src")
+          import schema
+
+          # Test-only change in this process; no schema file is edited.
+          schema.input_schema.columns["customer_lat"].checks = []
+          print("RED TEST ONLY: customer_lat range check disabled in memory", flush=True)
+          runpy.run_path("src/test_schema.py", run_name="__main__")
+          PY
       - name: Check good and bad order cases
         run: python tests/check_cases.py
 
