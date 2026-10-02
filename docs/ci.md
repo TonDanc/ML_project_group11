@@ -100,7 +100,7 @@ Remove-Item Env:CANDIDATES, Env:MLFLOW_TRACKING_URI, Env:GIT_COMMIT -ErrorAction
 
 ![CI รอบจริงผ่านครบทั้ง code, data และ model quality](img/ci-green.png)
 
-PR นี้ยังเป็นแบบร่างและยังไม่ได้ merge เข้า `main` ผลรอบแดงจริงครบทั้ง 3 ด้านอยู่ด้านล่าง ส่วนตารางก่อนหน้าเป็นผลการทดสอบในเครื่อง
+ผลข้างต้นเก็บจาก PR #12 ซึ่งเปิดเป็นแบบร่างในเวลาทดสอบ ผลรอบแดงจริงครบทั้ง 3 ด้านอยู่ด้านล่าง ส่วนตารางก่อนหน้าเป็นผลการทดสอบในเครื่อง สถานะการส่งงานล่าสุดอยู่ในหัวข้อสถานะส่งงานรวม
 
 ## ผล CI รอบแดงบน GitHub Actions
 
@@ -133,20 +133,20 @@ PR นี้ยังเป็นแบบร่างและยังไม�
 ### สถานะหลังทดสอบ
 
 - ปิด PR ทดสอบ #13, #14 และ #15 แล้ว โดยทุกอันมี `merged=false` และเก็บ branch ไว้สำหรับตรวจหลักฐาน
-- ตรวจ main บน GitHub ก่อนและหลังทดสอบ: commit ยังเป็น `a88b2c47ee797224c836f439deaeadb3c58fc464` ไม่มีการ push หรือ merge เข้า main
+- ตรวจ main บน GitHub ก่อนและหลังการทดสอบรอบแดง: commit ยังคงเป็น `a88b2c47ee797224c836f439deaeadb3c58fc464` ไม่มีการ push หรือ merge เข้า main ระหว่างการทดสอบรอบแดง
 - ตรวจ diff ยืนยันว่าโค้ดใน `src/`, `tests/` และ dependencies ของสมาชิกคนอื่นเหมือน branch `ci` เดิมทุกกรณี
 - workflow CI ปกติใน branch `ci` ไม่ถูกเปลี่ยนจากรอบเขียว เพิ่มเฉพาะเอกสารและรูปหลักฐานของงาน CI
 
-## สถานะเตรียมส่งงาน
+## สถานะส่งงานรวม
 
-จัดเตรียม workflow, dependency, เอกสาร และภาพ CI ทั้ง 4 ภาพร่วมกับงาน Slack ใน branch `Tan` ของ `thirawatv-sketch` ตามคำขอของผู้ใช้ รอบนี้หยุดที่ commit/push เข้า branch ของผู้ใช้ และไม่ merge เข้า `main`
+ส่ง workflow, dependency, เอกสาร และภาพ CI ทั้ง 4 ภาพร่วมกับงาน Slack ผ่าน PR จาก branch `Tan` ของ `thirawatv-sketch` เข้า `main` ตามคำขอล่าสุดของผู้ใช้ โดยนำ `main` ล่าสุดเข้า branch ก่อนและตรวจ CI ให้ผ่านก่อน merge
 
 - [x] มี job ตรวจโค้ด ข้อมูล และ model gate พร้อม trigger, input, environment และ timeout ตาม GUIDE
 - [x] ผ่านการตรวจบนเครื่องด้วย Python 3.11
 - [x] มีผล GitHub Actions รอบเขียวและรอบแดงครบทั้ง 3 ด้าน พร้อมรูปและลิงก์หลักฐาน
 - [x] มีเหตุผลเลือกเครื่องมือและคำอธิบายการทดสอบในเอกสารนี้
 
-[PR #12](https://github.com/TonDanc/ML_project_group11/pull/12) ของ branch `ci` ยังเป็น Draft เพื่อรอส่งตรวจ เมื่อพร้อมให้ `tharathep-kku` ตรวจจึงเปลี่ยนเป็น Ready for review ส่วน branch `Tan` ใช้เก็บงานของผู้ใช้ก่อนส่ง PR รอบนี้ ไม่มีการเปิด PR ใหม่จาก `Tan`
+ใช้ PR รวมจาก `Tan` เป็น PR ส่งงานหลักแทน PR แยกเดิม #12 และ #16 ลิงก์ Actions ในเอกสารนี้ยังใช้เป็นหลักฐานการทดสอบแต่ละด้านได้ ไฟล์ของส่วน CI มี `.github/workflows/ci.yml`, `requirements-dev.txt`, `docs/ci.md` และ `docs/img/ci-green.png`, `ci-red-code.png`, `ci-red-data.png`, `ci-red-model.png` รวมกับไฟล์ Slack อีก 3 ไฟล์เป็น 10 ไฟล์ของผู้ใช้
 
 ## ข้อมูลประกอบรายงาน
 
