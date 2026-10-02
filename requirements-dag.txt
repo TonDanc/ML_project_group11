@@ -1,0 +1,3 @@
+# ใช้คู่กับ requirements.txt:  pip install -r requirements.txt -r requirements-dag.txt
+# 3.4.x เพราะ prefect 3.5 ขึ้นไปต้องการ fastapi>=0.139 ซึ่งชนกับ fastapi==0.115.12 ของ API
+prefect==3.4.25
