@@ -90,16 +90,16 @@ Remove-Variable taskWebhook -ErrorAction SilentlyContinue
 
 ![Slack แสดงข้อความ test และ hello จาก ML Group11 Alerts](img/slack-alert-test.png)
 
-## สถานะเตรียมส่งงาน
+## สถานะส่งตรวจ
 
-จัดเตรียมงาน Slack ร่วมกับงาน CI ใน branch `Tan` ของ `thirawatv-sketch` ตามคำขอของผู้ใช้ รอบนี้หยุดที่ commit/push เข้า branch ของผู้ใช้ ยังไม่เปิด PR ของ Slack และไม่ merge เข้า `main`
+แยกเฉพาะงาน Slack จาก branch `Tan` มาไว้ใน branch `slack-alert` ของ `thirawatv-sketch` โดยเริ่มจาก `main` ล่าสุด งานนี้พร้อมให้ตรวจผ่าน PR ก่อนรวมเข้า `main` ส่วนงาน CI อยู่ใน [PR #12](https://github.com/TonDanc/ML_project_group11/pull/12) แยกต่างหาก
 
 - [x] เติม `send_alert` และ `notify_validation_failure` โดยคงสัญญาของฟังก์ชัน
 - [x] ตรวจ fallback, timeout, การตัดข้อความ และการไม่โยน exception
 - [x] มีผลส่ง Slack จริงและภาพ `docs/img/slack-alert-test.png`
 - [x] มีวิธีตั้งค่าและข้อความสำหรับผู้ทำรายงานในเอกสารนี้
 
-เมื่อต้องการส่ง PR ตาม GUIDE ให้แยกเฉพาะ `src/alerts.py`, `docs/slack-alert.md` และ `docs/img/slack-alert-test.png` ไป branch `slack-alert` แล้วให้ `tharathep-kku` ตรวจ ก่อนรวมเข้า `main` การเชื่อมฟังก์ชันเข้ากับ API และ monitoring เป็นงานของผู้ดูแลไฟล์เหล่านั้น และต้องส่ง webhook URL ให้ผู้เชื่อมระบบทางแชตส่วนตัวถ้ายังไม่ได้ส่ง ห้ามใส่ URL ใน repo หรือภาพหลักฐาน
+PR นี้มีเฉพาะ `src/alerts.py`, `docs/slack-alert.md` และ `docs/img/slack-alert-test.png` ผู้ตรวจหลักตาม GUIDE คือ `tharathep-kku` และผู้ตรวจสำรองคือ `manatsanun` ยังไม่ได้ merge เข้า `main` การเชื่อมฟังก์ชันเข้ากับ API และ monitoring เป็นงานของผู้ดูแลไฟล์เหล่านั้น และต้องส่ง webhook URL ให้ผู้เชื่อมระบบทางแชตส่วนตัวถ้ายังไม่ได้ส่ง ห้ามใส่ URL ใน repo หรือภาพหลักฐาน
 
 ## ข้อมูลประกอบรายงาน
 
