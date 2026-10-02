@@ -1,0 +1,15 @@
+{
+  "customer_state": "SP",
+  "seller_state": "SP",
+  "customer_lat": -23.5,
+  "customer_lng": -46.6,
+  "seller_lat": -23.6,
+  "seller_lng": -46.7,
+  "n_sellers": 1,
+  "n_items":"abc", 
+  "total_price": 100.0,
+  "total_freight": 15.0,
+  "total_weight_g": 800.0,
+  "estimated_delivery_days": 10,
+  "order_purchase_timestamp": "2018-05-01 10:00:00"
+}
