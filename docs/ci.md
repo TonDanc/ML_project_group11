@@ -61,9 +61,11 @@ Remove-Item Env:CANDIDATES, Env:MLFLOW_TRACKING_URI, Env:GIT_COMMIT -ErrorAction
 ## เก็บหลักฐานก่อนส่งงาน
 
 1. รอบเขียว: เปิด PR ปกติ ต้องเห็นทั้ง 3 job ผ่าน เก็บภาพ `docs/img/ci-green.png`
-2. รอบแดงด้านโค้ด: ใช้ branch ทดสอบแยก ใส่ import ที่ไม่ใช้ในไฟล์ทดสอบเพื่อให้ Ruff จับได้ เก็บภาพ `docs/img/ci-red-code.png`
-3. รอบแดงด้านข้อมูล: ใน branch ทดสอบแยก ถอดข้อจำกัด `customer_lat` ออกจาก schema เพื่อพิสูจน์ว่า test จับได้ เก็บภาพ `docs/img/ci-red-data.png` branch นี้ห้าม merge ตาม GUIDE
-4. รอบแดงด้านโมเดล: เมื่อ workflow อยู่บน default branch แล้ว ไปที่ Actions → CI → Run workflow เลือก `candidates=dummy_median` ต้องเห็น Model quality ล้มเพราะไม่ชนะ dummy เก็บภาพ `docs/img/ci-red-model.png`
+2. รอบแดงด้านโค้ด: branch `ci-red-code` สร้างไฟล์ `import os` ที่ไม่ใช้ใน `RUNNER_TEMP` แล้วเพิ่มไฟล์นี้เข้า Ruff ต้องได้ `F401` และ exit 1 เก็บภาพ `docs/img/ci-red-code.png`
+3. รอบแดงด้านข้อมูล: branch `ci-red-data` ปิด range check ของ `customer_lat` เฉพาะในหน่วยความจำของ process บน runner แล้วเรียก `src/test_schema.py` เดิมด้วย `runpy` ต้องได้ `AssertionError` ที่ `assert rejects(customer_lat=40.0)` เก็บภาพ `docs/img/ci-red-data.png` ไม่มีการแก้ไฟล์ `schema.py` หรือ `test_schema.py`
+4. รอบแดงด้านโมเดล: branch `ci-red-model` ตั้ง `CANDIDATES=dummy_median` ใน workflow ทดสอบ แล้วใช้คำสั่ง train/gate เดิม ต้องเห็น Model quality ล้มเพราะ MAE ไม่ชนะ dummy เก็บภาพ `docs/img/ci-red-model.png` กรณีนี้รันผ่าน PR แบบร่างเพื่อไม่ต้องนำ workflow เข้า `main` ก่อน; หลัง merge CI ปกติแล้วจึงใช้ Actions → Run workflow พร้อม input `candidates=dummy_median` ได้
+
+ทั้ง 3 branch ใช้ทดสอบเท่านั้น ห้าม merge ไฟล์ที่แก้เทียบกับ branch `ci` มีเพียง `.github/workflows/ci.yml` และไม่มีการแก้โค้ดของสมาชิกคนอื่น
 
 ต้องเก็บผลจาก Actions จริง ชื่อภาพใช้คำนำหน้า `ci-` และส่งให้ TonDanc ใช้ประกอบรายงาน
 
@@ -98,7 +100,42 @@ Remove-Item Env:CANDIDATES, Env:MLFLOW_TRACKING_URI, Env:GIT_COMMIT -ErrorAction
 
 ![CI รอบจริงผ่านครบทั้ง code, data และ model quality](img/ci-green.png)
 
-PR นี้ยังเป็นแบบร่างและยังไม่ได้ merge เข้า `main` หลักฐานรอบแดงทั้ง 3 ด้านบน GitHub Actions ยังเหลือดำเนินการ ผลรอบแดงในตารางก่อนหน้าเป็นการทดสอบในเครื่องเท่านั้น
+PR นี้ยังเป็นแบบร่างและยังไม่ได้ merge เข้า `main` ผลรอบแดงจริงครบทั้ง 3 ด้านอยู่ด้านล่าง ส่วนตารางก่อนหน้าเป็นผลการทดสอบในเครื่อง
+
+## ผล CI รอบแดงบน GitHub Actions
+
+วันที่ 3 ตุลาคม 2569 ทดสอบผ่าน PR แบบร่างแยก 3 อันบน branch ทดสอบ แต่ละรอบจบเป็น `failure` ด้วย exit code 1 ตรงตามที่ตั้งใจ และตรวจข้อความ log เพื่อยืนยันสาเหตุแล้ว
+
+| กรณี | Code quality | Data quality | Model quality | ผลจริง |
+|---|---|---|---|---|
+| `ci-red-code` | ล้ม: `F401` | ผ่าน | ข้าม | [รอบ #3](https://github.com/TonDanc/ML_project_group11/actions/runs/37042385103) |
+| `ci-red-data` | ผ่าน | ล้ม: `AssertionError` | ข้าม | [รอบ #4](https://github.com/TonDanc/ML_project_group11/actions/runs/37042386868) |
+| `ci-red-model` | ผ่าน | ผ่าน | ล้ม: gate ปฏิเสธ | [รอบ #5](https://github.com/TonDanc/ML_project_group11/actions/runs/37042391468) |
+
+### ด้านโค้ด
+
+[PR ทดสอบ #13](https://github.com/TonDanc/ML_project_group11/pull/13), commit `6bc2d3d`: Ruff จับไฟล์ชั่วคราวบน runner ได้ว่า `F401: os imported but unused` และคืน exit 1 จากนั้น job โมเดลถูกข้ามเพราะ `needs` กำหนดให้รอโค้ดและข้อมูลผ่านก่อน
+
+![Ruff ปฏิเสธ unused import ในรอบแดงด้านโค้ด](img/ci-red-code.png)
+
+### ด้านข้อมูล
+
+[PR ทดสอบ #14](https://github.com/TonDanc/ML_project_group11/pull/14), commit `4a5411d`: workflow ปิดเฉพาะ check พิกัดของลูกค้าในหน่วยความจำ แล้วชุดทดสอบเดิมตรวจพบว่า `customer_lat=40.0` ไม่ถูกปฏิเสธ จึงเกิด `AssertionError` และ exit 1 Job โมเดลถูกข้าม ไฟล์ `src/schema.py` และ `src/test_schema.py` ไม่ถูกเปลี่ยน
+
+![ชุดทดสอบจับกฎข้อมูลที่ถูกปิดชั่วคราวในรอบแดงด้านข้อมูล](img/ci-red-data.png)
+
+### ด้านโมเดล
+
+[PR ทดสอบ #15](https://github.com/TonDanc/ML_project_group11/pull/15), commit `1797a78`: เลือกเฉพาะ `dummy_median` ได้ test MAE 5.057 วัน เท่ากับ dummy baseline และ P95 7.2 ms Gate ปฏิเสธด้วยข้อความ `REJECTED: MAE 5.057 does not beat dummy 5.057` และ exit 1 โดยไม่ promote โมเดล
+
+![Gate ปฏิเสธโมเดล Dummy ในรอบแดงด้านโมเดล](img/ci-red-model.png)
+
+### สถานะหลังทดสอบ
+
+- ปิด PR ทดสอบ #13, #14 และ #15 แล้ว โดยทุกอันมี `merged=false` และเก็บ branch ไว้สำหรับตรวจหลักฐาน
+- ตรวจ main บน GitHub ก่อนและหลังทดสอบ: commit ยังเป็น `a88b2c47ee797224c836f439deaeadb3c58fc464` ไม่มีการ push หรือ merge เข้า main
+- ตรวจ diff ยืนยันว่าโค้ดใน `src/`, `tests/` และ dependencies ของสมาชิกคนอื่นเหมือน branch `ci` เดิมทุกกรณี
+- workflow CI ปกติใน branch `ci` ไม่ถูกเปลี่ยนจากรอบเขียว เพิ่มเฉพาะเอกสารและรูปหลักฐานของงาน CI
 
 ## เอกสารอ้างอิง
 
