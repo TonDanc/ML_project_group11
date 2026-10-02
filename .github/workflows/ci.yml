@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      candidates:
+        description: Candidate models (comma-separated; dummy_median tests rejection)
+        required: true
+        default: dummy_median,hgb_default
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  GIT_COMMIT: ${{ github.sha }}
+  MLFLOW_TRACKING_URI: sqlite:///mlflow.db
+
+jobs:
+  code-quality:
+    name: Code quality (Ruff)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - name: Install lint dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Check Python code
+        run: |
+          targets=(src tests)
+          if [[ -d loadtest ]]; then
+            targets+=(loadtest)
+          fi
+          # This script sets sys.path before importing the project's schema.
+          python -m ruff check "${targets[@]}" --target-version py311 \
+            --per-file-ignores 'tests/check_cases.py:E402'
+
+  data-quality:
+    name: Data quality (schema and cases)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Install project dependencies
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
+      - name: Check schema rejects invalid data
+        run: python src/test_schema.py
+      - name: Check good and bad order cases
+        run: python tests/check_cases.py
+
+  model-quality:
+    name: Model quality (train and gate)
+    needs: [code-quality, data-quality]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CANDIDATES: ${{ inputs.candidates || 'dummy_median,hgb_default' }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Install project dependencies
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
+      - name: Train candidate models
+        run: python src/train.py
+      - name: Promote only if model passes the gate
+        run: python src/registry.py promote
