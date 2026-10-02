@@ -82,7 +82,23 @@ Remove-Item Env:CANDIDATES, Env:MLFLOW_TRACKING_URI, Env:GIT_COMMIT -ErrorAction
 | รอบแดงด้านข้อมูลในสำเนาชั่วคราว | ถอดข้อจำกัด latitude แล้ว schema test จับได้ด้วย `AssertionError`, exit 1 |
 | รอบแดงด้านโมเดลในสำเนาชั่วคราว | `dummy_median` อย่างเดียวถูก gate ปฏิเสธ เพราะ MAE 5.057 วันเท่ากับ dummy, exit 1 |
 
-ค่าความเร็วเป็นผลของเครื่องทดสอบนี้ runner บน GitHub จะวัดใหม่และตัดสินผ่าน gate ของตัวเอง ผลในเครื่องยังไม่ใช่รอบ Actions จริงและยังไม่มีภาพหลักฐาน ต้องเก็บตามขั้นตอนข้างบนหลังเปิด PR
+ค่าความเร็วในตารางเป็นผลของเครื่องทดสอบนี้ ส่วน runner บน GitHub วัดใหม่และตัดสินผ่าน gate ของตัวเอง ผลรอบเขียวจริงอยู่ด้านล่าง
+
+## ผล GitHub Actions จริง
+
+วันที่ 2 ตุลาคม 2569 เปิด [PR #12](https://github.com/TonDanc/ML_project_group11/pull/12) แบบร่างจาก branch `ci` เข้า `main` และ [CI รอบที่ 1](https://github.com/TonDanc/ML_project_group11/actions/runs/37035012333) ของ commit `878c2a4` ผ่านครบ 3 job ใช้เวลารวม 2 นาที 25 วินาที บน Python 3.11.16 และ Ubuntu 24.04
+
+| Job | ผลจริงบน GitHub | ระยะเวลา |
+|---|---|---|
+| Code quality (Ruff) | ผ่าน | 13 วินาที |
+| Data quality (schema and cases) | ผ่าน: schema และ test cases ทั้ง 6 ไฟล์ | 1 นาที 4 วินาที |
+| Model quality (train and gate) | ผ่าน: `PROMOTED v1 to @champion` ในฐานทดสอบของ runner | 1 นาที 14 วินาที |
+
+โมเดล `hgb_default` มี test MAE 3.389 วัน เทียบ dummy MAE 5.057 วัน และ P95 9.2 ms จึงผ่าน gate
+
+![CI รอบจริงผ่านครบทั้ง code, data และ model quality](img/ci-green.png)
+
+PR นี้ยังเป็นแบบร่างและยังไม่ได้ merge เข้า `main` หลักฐานรอบแดงทั้ง 3 ด้านบน GitHub Actions ยังเหลือดำเนินการ ผลรอบแดงในตารางก่อนหน้าเป็นการทดสอบในเครื่องเท่านั้น
 
 ## เอกสารอ้างอิง
 
