@@ -1,4 +1,4 @@
-name: CI
+name: CI red-model (TEST ONLY)
 
 on:
   pull_request:
@@ -81,7 +81,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      CANDIDATES: ${{ inputs.candidates || 'dummy_median,hgb_default' }}
+      # Test-only choice: the Dummy cannot beat the Dummy baseline.
+      CANDIDATES: dummy_median
     steps:
       - uses: actions/checkout@v7.0.1
         with:
