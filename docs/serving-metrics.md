@@ -101,6 +101,60 @@ python loadtest/run.py --url http://localhost:8000 --requests 2000 --concurrency
 
 สรุป SLO: error rate ผ่าน แต่ P95 และ throughput ยังไม่ผ่าน ต้องแจ้ง tharathep เพื่อพิจารณาเพิ่ม `--workers` แล้ววัดใหม่
 
+## รอบ 2: เพิ่ม workers ตาม GUIDE 4.1 ข้อ 4 (2026-10-04)
+
+### หาสาเหตุก่อนแก้
+
+วัดเวลาต่อ 1 คำขอภายใน container (`docker compose exec api python ...`):
+
+| ขั้น | เวลา |
+| --- | --- |
+| Pandera `input_schema.validate` 1 แถว | 33.7 ms |
+| `model.predict` 1 แถว | 10.9 ms |
+
+1 คำขอใช้ CPU ราว 45 ms และ worker เดียวมี GIL ตัวเดียว จึงรับได้ไม่เกินราว 22 req/s ตรงกับที่วัดได้ คำขอที่เกินจะต่อคิว P95 จึงสูงถึงเกือบ 1 วินาที
+
+### ทดลองทีละตัวแปร (เครื่องเดียวกัน, 2,000 คำขอ, concurrency 20)
+
+เครื่อง: Windows 11 + Docker Desktop 29.8, 12 CPU, RAM ให้ Docker 7.5 GB
+
+| ตั้งค่า | P50 / P95 (ms) | Throughput (req/s) | หมายเหตุ |
+| --- | --- | --- | --- |
+| `--workers 4` | 868.72 / 1459.39 | 22.34 | ไม่ดีขึ้นเลย container มี 318 threads |
+| `--workers 4` + `OMP_NUM_THREADS=1` | 476.17 / 970.65 | 40.16 | |
+| `--workers 8` + `OMP_NUM_THREADS=1` | 250.41 / 641.26 | 68.05 | RAM api 1.5 GB |
+| `--workers 12` + `OMP_NUM_THREADS=1` | 209.26 / 552.21 | 78.66 | RAM api 2.2 GB ได้เพิ่มแค่ 15% |
+
+ทำไม 4 workers ไม่ช่วย: `HistGradientBoostingRegressor` ใช้ OpenMP ซึ่งสร้าง thread เท่าจำนวน CPU (12) ในทุก worker ทุก worker จึงแย่ง CPU กันเอง ตั้ง `OMP_NUM_THREADS=1` ให้ 1 process ใช้ 1 thread แล้วขยายด้วยจำนวน process แทน (scale ด้วย concurrency ตาม Lecture 8)
+
+เลือก **8 workers + `OMP_NUM_THREADS=1`** (แก้ CMD ใน `Dockerfile` ใส่ `env OMP_NUM_THREADS=1` เฉพาะคำสั่งของ API เพราะ service `train` ใช้ image เดียวกันและควรใช้ทุก core ตอนเทรน) เพราะ 12 workers ได้เพิ่มน้อยแต่ใช้ RAM เพิ่ม 0.7 GB ถ้าเครื่องมี CPU น้อยกว่านี้ให้ลด `--workers` ให้ไม่เกินจำนวน CPU
+
+### ผลหลังแก้ (image ที่ build จาก Dockerfile ใหม่)
+
+| วันที่ | เครื่อง (OS, CPU, RAM, workers) | คำขอ / concurrency | สำเร็จ / ผิดพลาด | P50 / P95 (ms) | Throughput (req/s) | Error rate | เทียบ SLO |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-10-04 | Windows 11 + Docker Desktop, 12 CPU, 7.5 GB, API workers=8 | 2,000 / 20 | 2,000 / 0 | 299.96 / 690.13 | 57.77 | 0.00% | throughput และ error rate ผ่าน, **P95 ยังไม่ผ่าน** |
+| 2026-10-04 | เครื่องเดียวกัน รันซ้ำ, workers=8 | 2,000 / 20 | 2,000 / 0 | 301.53 / 672.82 | 58.46 | 0.00% | เหมือนรอบก่อน |
+| 2026-10-04 | เครื่องเดียวกัน, workers=8 | 2,000 / 8 | 2,000 / 0 | 89.18 / 225.56 | 70.19 | 0.00% | ใกล้ P95 แต่ยังเกิน 200 ms |
+
+ผลเปลี่ยนตามภาระเครื่องตอนวัด (รอบทดลองข้างบนได้ 68 req/s, รอบนี้ 58 req/s) ผลรันเดียวกัน: `check_cases.py --url` ผ่าน 6/6 และ `docker compose logs api` มี `[ALERT]` 5 บรรทัด (ตรงกับไฟล์ `bad_*` 5 ไฟล์)
+
+ทำไม P95 ยังไม่ผ่านที่ concurrency 20: เวลารอโดยเฉลี่ย ≈ concurrency / throughput = 20 / 58 ≈ 345 ms (Little's law) จะได้ P95 ≤ 200 ms ที่ 20 คำขอพร้อมกันต้องรับได้ราว 150 req/s ขึ้นไป ซึ่งเกินกำลัง CPU 12 core เมื่อ 1 คำขอใช้ 45 ms ทางที่เหลือ (ยังไม่ได้ทำ ต้องแก้ `api.py`): ลดเวลา Pandera ซึ่งเป็น 3/4 ของเวลาต่อคำขอ หรือรวมหลายคำขอเป็น batch แบบ TF Serving ใน Lab 8 (วัดแล้ว validate+predict 100 แถวพร้อมกันใช้ 37 ms ใกล้เคียง 1 แถว) หรือ scale ออกหลายเครื่อง (horizontal scaling)
+
+`/metrics` หลังเพิ่ม workers: แต่ละ worker มีตัวนับของตัวเอง คำขอ `/metrics` แต่ละครั้งได้ค่าของ worker ที่รับคำขอนั้นเท่านั้น (เช่นเห็น `requests_total` 249 จาก ~2,006) P50/P95 ยังใช้เป็นตัวอย่างได้ แต่ตัวนับรวมต้องดูจาก log หรือจากผล load test
+
+### ทดสอบด้วยคำสั่งเดียว
+
+ครั้งแรกต้องมี `@champion` ก่อน: `docker compose up -d mlflow && docker compose run --rm train`
+
+จากนั้นรันคำสั่งเดียว (cmd, Git Bash หรือ PowerShell 7 ซึ่งรองรับ `&&`):
+
+```bash
+docker compose up -d --build api && curl.exe -s --retry 30 --retry-all-errors --retry-delay 2 http://localhost:8000/health && python tests/check_cases.py --url http://localhost:8000 && python loadtest/run.py --url http://localhost:8000 && curl.exe -s http://localhost:8000/metrics
+```
+
+`curl --retry` รอจน API โหลดโมเดลเสร็จ ทุกขั้นต่อด้วย `&&` ถ้าขั้นไหนล้มจะหยุดทันที ไม่ใส่ `train` ในคำสั่งนี้เพราะการ train รอบที่สองมักไม่ผ่าน gate (ต้องดีกว่า champion 5%) แล้วคืน exit 1
+
 ## Demo ขาดฟิลด์
 
 ใช้ `tests/cases/bad_missing_customer_lat.json` ต้องได้ HTTP 422 และ `[ALERT]`
