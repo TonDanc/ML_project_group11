@@ -4,11 +4,11 @@
 
 ## สรุปสั้น
 
-คำสั่งเดียวรันทั้งกระบวนการ: **ตรวจข้อมูล → เทรน → ด่านอนุมัติ (gate)**
+คำสั่งเดียวรันทั้งกระบวนการ: **ตรวจข้อมูล → เทรน → ด่านอนุมัติ (gate) → smoke test**
 
 ```
-validate_data  ──►  train  ──►  gate
- (Pandera)         (MLflow)     (registry.py promote → @champion)
+validate_data  ──►  train  ──►  gate  ──►  smoke_test (ถ้าตั้ง API_URL)
+ (Pandera)         (MLflow)     (registry.py promote → @champion)   (GET /health)
      │                            │
      └─ ข้อมูลเสีย: หยุด, exit 2      └─ โมเดลไม่ผ่านเกณฑ์: exit 3
 ```
@@ -20,6 +20,7 @@ pip install -r requirements.txt -r requirements-dag.txt
 
 python src/pipeline.py                                  # ข้อมูลปกติ -> exit 0 (หรือ 3 ถ้า gate ปฏิเสธ)
 python src/pipeline.py --data demo_data/bad_orders.csv  # ข้อมูลเสีย -> หยุดที่ validate, exit 2
+API_URL=http://localhost:8000 python src/pipeline.py    # หลัง gate ผ่าน เช็คว่า API ใช้เวอร์ชันไหน
 ```
 
 เทรนเร็วขึ้นตอนซ้อม: `CANDIDATES=dummy_median,hgb_default python src/pipeline.py`
@@ -39,10 +40,13 @@ python src/pipeline.py --data demo_data/bad_orders.csv  # ข้อมูลเ�
 | `validate_data` | `load_splits(path)` จาก `train.py` (ข้างในใช้ `input_schema` ของ Pandera) | ExampleValidator | Pandera โยน `SchemaError` → flow คืน 2 |
 | `train` | `python src/train.py` ผ่าน `subprocess` | Trainer | `check=True` ทำให้ task พัง → exit 1 |
 | `gate` | `python src/registry.py promote` | Evaluator + Pusher ("blessing") | return code ≠ 0 → flow คืน 3 |
+| `smoke_test` | `GET {API_URL}/health` เทียบ `version` กับ `@champion` (รันเฉพาะเมื่อ gate ผ่านและตั้ง env `API_URL`) | ตรวจหลัง deploy | พิมพ์ `WARN` เท่านั้น ไม่เปลี่ยน exit code |
 
 **ทำไม `train` กับ `gate` เรียกผ่าน `subprocess`:** โค้ดใน `train.py` และ `registry.py` อยู่ใต้ `if __name__ == '__main__':` จึง import มาเรียกเป็นฟังก์ชันไม่ได้ การรันเป็นโปรแกรมแยกทำให้ไม่ต้องแก้ไฟล์ของคนอื่นเลย
 
 **ทำไม gate ไม่ใช่ exception:** การที่โมเดลใหม่ไม่ดีพอเป็นผลลัพธ์ปกติของระบบ (เหมือน blessing = false ในสไลด์) task `gate` จึงคืนค่า `True/False` แล้ว flow ตัดสินใจเอง
+
+**ทำไม smoke_test ไม่สั่ง restart API เอง:** API โหลด `@champion` ตอนเริ่มเท่านั้น ถ้า gate เพิ่งเลื่อนเวอร์ชัน API จะยังใช้ตัวเก่า task นี้จึงพิมพ์เตือนให้ `docker compose restart api` ตาม GUIDE (ไม่ restart เอง เพราะ pipeline ไม่ควรไปหยุด service ที่ลูกค้ากำลังใช้) และถ้าเรียก API ไม่ได้ก็แค่เตือน เพราะ API เป็นคนละระบบกับการเทรน
 
 **ทำไม validate ไม่มี retries:** ข้อมูลเสียลองใหม่กี่รอบก็เสียเหมือนเดิม (เหตุผลเดียวกับ `AirflowFailException` ใน airflow_lab)
 
@@ -80,7 +84,8 @@ python src/pipeline.py
 
 - **DAG เริ่มจาก `cleaned_data/feature extraction/shipping_distance_duration.csv` ไม่ใช่ข้อมูลดิบ** สคริปต์ใน `raw_data + Data prepair/` ใช้ path `archive/clean/...` ที่ไม่ตรงกับ repo และไฟล์ดิบไม่อยู่ใน Docker image
 - **`--data` ใช้กับขั้น validate เท่านั้น** `train.py` และ `registry.py` อ่าน `DATA_PATH` เสมอ (แก้ไม่ได้โดยไม่แตะไฟล์ของ tharathep) ดังนั้น `--data` มีไว้สาธิต "ข้อมูลเสียแล้วระบบหยุด"
-- ยังไม่ได้ทำ `smoke_test` (เรียก `GET {API_URL}/health` หลัง gate) ซึ่ง GUIDE ระบุว่าไม่บังคับ หลัง gate ผ่านต้อง restart API เองเพื่อโหลด `@champion` ตัวใหม่
+- หลัง gate ผ่านต้อง restart API เองเพื่อโหลด `@champion` ตัวใหม่ (`smoke_test` แค่เตือน)
+- ถ้าเคยรัน `prefect config set PREFECT_API_URL=...` ไว้ ต้องเปิด `prefect server start` ก่อนรัน pipeline ไม่อย่างนั้นจะล้มด้วย `Failed to reach API at http://127.0.0.1:4200/api/`
 
 ## ผลทดสอบ (2 ต.ค. 2569, `CANDIDATES=dummy_median,hgb_default`, MLflow sqlite เปล่า)
 
@@ -90,8 +95,17 @@ python src/pipeline.py
 | `python src/pipeline.py` (รอบแรก) | hgb_default test MAE 3.389 ชนะ dummy 5.057 → PROMOTED v1 | 0 |
 | `python src/pipeline.py` (รอบสอง) | v2 MAE 3.389 ไม่ดีกว่า v1 ถึง 5% → REJECTED | 3 |
 
+### ผลทดสอบ `smoke_test` (4 ต.ค. 2569, MLflow sqlite เปล่า, API ใน Docker ใช้ v1)
+
+| คำสั่ง | ผล | Exit |
+|---|---|---|
+| `CANDIDATES=dummy_median,linear_regression API_URL=http://localhost:9999 python src/pipeline.py` | PROMOTED v1, `WARN: smoke test เรียก http://localhost:9999/health ไม่ได้` | 0 |
+| `CANDIDATES=hgb_default API_URL=http://localhost:8000 python src/pipeline.py` | PROMOTED v2, `WARN: API ยังใช้ v1 แต่ @champion คือ v2 -> restart API` | 0 |
+| API ใช้ v1 และ `@champion` คือ v1 | พิมพ์ `/health` อย่างเดียว ไม่มี WARN | - |
+| `API_URL=http://localhost:8000 python src/pipeline.py --data demo_data/bad_orders.csv` | หยุดที่ validate ไม่ถึง smoke_test | 2 |
+
 ## ไฟล์ที่เพิ่ม (ไม่ได้แก้ไฟล์เดิม)
 
-- `src/pipeline.py` — Prefect flow 3 task
+- `src/pipeline.py` — Prefect flow 4 task (smoke_test ไม่บังคับ)
 - `requirements-dag.txt` — `prefect==3.4.25`
 - `docs/pipeline.md` — ไฟล์นี้

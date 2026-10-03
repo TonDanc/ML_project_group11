@@ -1,8 +1,9 @@
-"""DAG ของโปรเจกต์ด้วย Prefect:  validate_data -> train -> gate
+"""DAG ของโปรเจกต์ด้วย Prefect:  validate_data -> train -> gate -> smoke_test (ถ้าตั้ง API_URL)
 
 รันจากโฟลเดอร์หลักของ repo:
   python src/pipeline.py                                  # ข้อมูลปกติ
   python src/pipeline.py --data demo_data/bad_orders.csv  # ข้อมูลเสีย -> หยุดที่ validate
+  API_URL=http://localhost:8000 python src/pipeline.py    # หลัง gate ผ่าน เช็ค /health ของ API ด้วย
 
 Exit code (ตาม GUIDE สัญญา D):  0 = ทุกขั้นสำเร็จ,  2 = validate ไม่ผ่าน,  3 = gate ปฏิเสธโมเดล
 
@@ -12,14 +13,18 @@ Exit code (ตาม GUIDE สัญญา D):  0 = ทุกขั้นสำ�
   gate          = Evaluator+Pusher (registry.py promote: ผ่านเกณฑ์ = "blessed" -> @champion)
 """
 import argparse
+import json
 import os
 import subprocess
 import sys
+from urllib.error import URLError
+from urllib.request import urlopen
 
+import mlflow
 from pandera.errors import SchemaError, SchemaErrors
 from prefect import flow, task
 
-from train import DATA_PATH, git_commit, load_splits
+from train import DATA_PATH, MODEL_NAME, TRACKING_URI, git_commit, load_splits
 
 
 @task
@@ -44,6 +49,23 @@ def gate() -> bool:
     return result.returncode == 0
 
 
+@task
+def smoke_test(api_url: str) -> None:
+    # ไม่บังคับ: ถาม API ที่รันอยู่ว่าใช้โมเดลเวอร์ชันไหน เทียบกับ @champion ที่เพิ่งเลื่อน (ไม่ restart ให้เอง)
+    mlflow.set_tracking_uri(TRACKING_URI)
+    champion = mlflow.MlflowClient().get_model_version_by_alias(MODEL_NAME, 'champion').version
+    try:
+        with urlopen(api_url.rstrip('/') + '/health', timeout=5) as response:
+            health = json.load(response)
+    except (URLError, OSError, ValueError) as e:  # API ไม่ได้เปิด = เตือนเฉยๆ ไม่ทำให้ flow ล้ม
+        print(f'WARN: smoke test เรียก {api_url}/health ไม่ได้ ({e})')
+        return
+    print(f'API /health: {health}')
+    if str(health.get('version')) != str(champion):  # sqlite store gives int, API JSON gives str
+        print(f'WARN: API ยังใช้ v{health.get("version")} แต่ @champion คือ v{champion} '
+              '-> restart API เพื่อโหลดตัวใหม่ (docker compose restart api)')
+
+
 @flow(name='delivery-eta-pipeline')
 def pipeline(data: str = DATA_PATH) -> int:
     # ลำดับการเรียกในฟังก์ชันนี้คือเส้นของ DAG: ขั้นถัดไปเริ่มได้เมื่อขั้นก่อนหน้าสำเร็จเท่านั้น
@@ -56,6 +78,8 @@ def pipeline(data: str = DATA_PATH) -> int:
     if not gate():
         print('STOP: gate ปฏิเสธโมเดลใหม่ (@champion ตัวเดิมยังใช้งานต่อ)')
         return 3
+    if os.environ.get('API_URL'):
+        smoke_test(os.environ['API_URL'])
     print('DONE: โมเดลใหม่ผ่าน gate และเป็น @champion แล้ว (restart API เพื่อโหลดตัวใหม่)')
     return 0
 
