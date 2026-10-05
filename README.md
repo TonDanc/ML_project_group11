@@ -40,6 +40,17 @@ docker compose up -d api           # API ใช้โมเดล @champion: htt
 - bash: `GIT_COMMIT=$(git rev-parse HEAD) docker compose run --rm train`
 - PowerShell: `$env:GIT_COMMIT = git rev-parse HEAD; docker compose run --rm train`
 
+### คำสั่งเดียว: ข้อมูลดิบ → เตรียมข้อมูล → ตรวจข้อมูล → เทรน → gate → API ให้บริการ (Prefect DAG)
+
+```bash
+pip install -r requirements.txt -r requirements-dag.txt
+docker compose up -d mlflow
+MLFLOW_TRACKING_URI=http://localhost:5050 python src/pipeline.py --deploy
+```
+
+PowerShell: `$env:MLFLOW_TRACKING_URI="http://localhost:5050"; python src/pipeline.py --deploy`
+exit 0 = API ให้บริการ `@champion` ตัวใหม่แล้ว, 2 = ข้อมูลไม่ผ่าน, 3 = gate ปฏิเสธ (API ใช้ตัวเดิม) รายละเอียดใน [docs/pipeline.md](docs/pipeline.md)
+
 ### แบบรันในเครื่อง (Python 3.11)
 
 ```bash
@@ -114,7 +125,7 @@ models/                    โมเดลที่เทรนแล้ว (ไ
 | Model Registry | MLflow Registry (`@champion`, gate, rollback) | ใช้งานแล้ว |
 | Model Serving | FastAPI | ใช้งานแล้ว |
 | Monitoring | Evidently / เขียนเอง | กำลังทำ (`src/monitor.py`) |
-| Pipeline Orchestration | Prefect | กำลังทำ (`src/pipeline.py`) |
+| Pipeline Orchestration | Prefect | ใช้งานแล้ว (`src/pipeline.py --deploy`) |
 | CI/CD | GitHub Actions | กำลังทำ (`.github/workflows/`) |
 
 คำอธิบายรายละเอียดของงานที่กำลังทำจะอยู่ใน `docs/` (monitoring, pipeline, ci, serving-metrics, slack-alert, architecture, report) และจะลิงก์จาก README นี้เมื่อเสร็จ
