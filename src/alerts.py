@@ -1,4 +1,4 @@
-"""Best-effort Slack alerts using the caller-facing contract in GUIDE.md."""
+"""Best-effort Slack alerts; contract and behaviour in docs/monitoring.md."""
 
 import json
 import os

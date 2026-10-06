@@ -34,14 +34,14 @@ from features import add_features
 from schema import input_schema
 from train import MODEL_NAME, TARGET, TRACKING_URI, load_splits, xy
 
-DRIFT_COLUMNS = ['total_weight_g', 'distance_km']        # these decide Data Drift (GUIDE contract D)
+DRIFT_COLUMNS = ['total_weight_g', 'distance_km']        # these decide Data Drift (see docs/monitoring.md)
 INFO_COLUMNS = ['total_price', 'total_freight', TARGET]  # shown in the report, do not decide
 PSI_LIMIT = 0.2
 KS_P_LIMIT = 0.01
 MAE_MARGIN = 2.0         # days: MAE limit = test MAE + this
 RETRAIN_DAYS = 2         # consecutive days over the MAE limit before retraining
 MIN_ORDERS_PER_DAY = 30  # a day with fewer orders is too noisy to judge
-P95_LIMIT_MS = 200       # SLO, same as docs/serving-metrics.md
+P95_LIMIT_MS = 200       # SLO, same as docs/serving.md
 ERROR_RATE_LIMIT = 0.01
 OUT_DIR = 'reports'
 EXIT_OK, EXIT_DATA_DRIFT, EXIT_CONCEPT_DRIFT = 0, 2, 3
