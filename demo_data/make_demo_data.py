@@ -1,4 +1,4 @@
-"""Build the demo CSVs used by monitor.py, pipeline.py and the live demo (GUIDE.md contract C).
+"""Build the demo CSVs used by monitor.py, pipeline.py and the live demo (see docs/data.md).
 
 Run from repo root:  python demo_data/make_demo_data.py
 

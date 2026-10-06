@@ -1,6 +1,4 @@
-# Monitoring และ drift — `src/monitor.py`
-
-ผู้รับผิดชอบ: keerati-chawong (branch `monitoring`)
+# Monitoring, drift และการแจ้งเตือน: `src/monitor.py`, `src/alerts.py`
 
 ## สรุปสั้น
 
@@ -50,7 +48,7 @@ python src/monitor.py --current demo_data/normal_orders.csv --api-url http://loc
 | Data Drift | PSI ของ `total_weight_g` และ `distance_km` เทียบ train split | PSI > 0.2 คอลัมน์ใดคอลัมน์หนึ่ง | `PSI_LIMIT` | `Data Drift detected`, exit 2 |
 | Concept Drift | MAE ของ `@champion` บนข้อมูลช่วงนั้น | MAE > MAE ตอน test ปกติ + 2 วัน (3.389 + 2 = **5.389 วัน**) และ input ไม่ drift | `MAE_MARGIN` | `Concept Drift detected`, exit 3 |
 | เทรนใหม่ | MAE รายวัน (เฉพาะวันที่มี order ≥ 30) | เกินเกณฑ์ **2 วันติดกัน** หรือพบ Data Drift | `RETRAIN_DAYS`, `MIN_ORDERS_PER_DAY` | บรรทัด `retrain: YES` และอยู่ในข้อความแจ้งเตือน |
-| ระบบ | `latency_ms.p95` และ `errors_total / requests_total` จาก `GET /metrics` | P95 > 200 ms หรือ error rate ≥ 1% (SLO เดียวกับ [serving-metrics.md](serving-metrics.md)) | `P95_LIMIT_MS`, `ERROR_RATE_LIMIT` | `API SLO breached` (ไม่เปลี่ยน exit code) |
+| ระบบ | `latency_ms.p95` และ `errors_total / requests_total` จาก `GET /metrics` | P95 > 200 ms หรือ error rate ≥ 1% (SLO เดียวกับ [serving.md](serving.md#slo)) | `P95_LIMIT_MS`, `ERROR_RATE_LIMIT` | `API SLO breached` (ไม่เปลี่ยน exit code) |
 
 `total_price`, `total_freight` และ `delivery_days` คำนวณ PSI/KS และอยู่ใน HTML report ด้วย แต่แสดงเป็น `info` ไม่ใช้ตัดสิน
 
@@ -101,7 +99,7 @@ PowerShell: `python src/monitor.py --current demo_data/drift_blackfriday.csv; if
 | `drift_north.csv` | 1,765 | 0.008 | **6.937** | 6.971 | +3.58 | – (ไม่มีวันที่ order ≥ 30) | Data Drift, เทรนใหม่ | **2** |
 | `drift_blackfriday.csv` | 3,264 | 0.008 | 0.015 | **6.317** | **+2.93** | **7** | Concept Drift, เทรนใหม่ | **3** |
 
-exit code ตรงกับที่ GUIDE คาดไว้ทั้ง 3 ไฟล์ และ Black Friday เกินเกณฑ์ 2 วันจริง (เกิน 2.93 วัน)
+exit code ตรงตามที่ออกแบบไว้ทั้ง 3 ไฟล์ และ Black Friday เกินเกณฑ์ 2 วันจริง (เกิน 2.93 วัน)
 
 ข้อมูลเทียบเพิ่ม: val split ได้ MAE 4.086 (+0.70) และ PSI ทุกคอลัมน์ ≤ 0.014 จึงไม่ถูกแจ้งเตือน
 
@@ -133,12 +131,10 @@ Retrain: yes -> python src/pipeline.py
 
 HTML report ของ Evidently จากรอบวันศุกร์อยู่ใน repo ที่ `evidently/reports/drift_north.html` และ `evidently/reports/drift_blackfriday.html`
 
-## จุดที่ต่างจากสัญญา D ใน GUIDE (ต้องให้กลุ่มรับทราบ)
-
-GUIDE บอกว่าถ้าตัวเลขจริงไม่เป็นตามเกณฑ์ให้รายงานตามจริงแล้วเสนอเกณฑ์ที่เหมาะสม มี 2 ข้อ:
+## เหตุผลของกฎตัดสิน
 
 **1. ใช้ PSI ตัดสินอย่างเดียว KS p-value แสดงไว้เป็นข้อมูล**
-สัญญา D เขียนว่า "PSI > 0.2 หรือ KS p-value < 0.01" แต่ reference มี 66,724 แถว KS test จึงไวมากจนข้อมูลปกติก็ไม่ผ่าน:
+แผนแรกตั้งเกณฑ์ว่า "PSI > 0.2 หรือ KS p-value < 0.01" แต่ reference มี 66,724 แถว KS test จึงไวมากจนข้อมูลปกติก็ไม่ผ่าน:
 
 | ข้อมูล | KS p-value `total_weight_g` | KS p-value `distance_km` | ถ้าใช้ KS ตัดสิน |
 |---|---:|---:|---|
@@ -149,15 +145,9 @@ GUIDE บอกว่าถ้าตัวเลขจริงไม่เป�
 ถ้าใช้ KS ตามตัวอักษร ทุกไฟล์จะได้ Data Drift รวมถึงข้อมูลปกติ จึงแยกสถานการณ์ไม่ได้ PSI วัด "ขนาด" ของการเปลี่ยน ไม่ขึ้นกับจำนวนแถว จึงเหมาะกว่า
 
 **2. MAE เกินเกณฑ์พร้อมกับ input drift รายงานเป็น Data Drift (exit 2) ไม่ใช่ 3**
-สัญญา D เขียนว่า "ถ้ามีทั้งสองให้คืน 3" แต่ `drift_north.csv` มี MAE 6.971 ซึ่งเกินเกณฑ์ 5.389 ด้วย ถ้าทำตามตัวอักษรจะได้ exit 3 ไม่ใช่ 2 ตามที่ GUIDE คาด
-เหตุผลที่เลือกแบบนี้: ภาคเหนือส่งนานเป็นปกติ (เฉลี่ย 22 วัน) ค่าคลาดเคลื่อนจึงใหญ่ตามไปด้วย เป็นผลจาก input ที่เปลี่ยน ไม่ใช่ความสัมพันธ์ที่เปลี่ยน ข้อความแจ้งเตือนยังแสดง MAE ไว้ครบ
+`drift_north.csv` มี MAE 6.971 ซึ่งเกินเกณฑ์ 5.389 ด้วย แต่รายงานเป็น Data Drift เพราะ: ภาคเหนือส่งนานเป็นปกติ (เฉลี่ย 22 วัน) ค่าคลาดเคลื่อนจึงใหญ่ตามไปด้วย เป็นผลจาก input ที่เปลี่ยน ไม่ใช่ความสัมพันธ์ที่เปลี่ยน ข้อความแจ้งเตือนยังแสดง MAE ไว้ครบ
 
-## เหตุผลที่เลือก Evidently
-
-- คำนวณ PSI และ KS ต่อคอลัมน์ให้เลย ไม่ต้องเขียนการแบ่งช่วงเอง และได้ HTML report ที่เห็นการกระจายของ reference เทียบ current ใช้เป็นหลักฐานได้
-- เป็น library ของ Python ตัวเดียว (`pip install`) ไม่ต้องตั้ง server หรือ database แบบ Prometheus + Grafana เหมาะกับการตรวจเป็นรอบ (batch) ซึ่งตรงกับงานนี้ เพราะคำตอบจริงมาช้าหลายวันอยู่แล้ว
-- pin เวอร์ชัน `evidently==0.7.23` ใน `requirements-monitor.txt` เพราะ API เปลี่ยนบ่อย
-- ส่วน MAE, การนับวันติดกัน และการอ่าน `/metrics` เขียนเองด้วย pandas/numpy เพราะเป็นกฎเฉพาะของโครงงาน
+**เวอร์ชัน:** pin `evidently==0.7.23` ใน `requirements-monitor.txt` เพราะ API ของ Evidently เปลี่ยนบ่อย เหตุผลที่เลือก Evidently อยู่ใน [report.md](report.md)
 
 ## ข้อจำกัด
 
@@ -168,6 +158,40 @@ GUIDE บอกว่าถ้าตัวเลขจริงไม่เป�
 - **`delivery_days` เทียบ train มี PSI 0.39 แม้ในข้อมูลปกติ** เพราะเวลาส่งเฉลี่ยลดลงตามเวลา (train 13.3 → val 10.4 → test 7.9 วัน) เกณฑ์ MAE จึงอิง test split ซึ่งเป็นช่วงล่าสุด ไม่อิง train
 - ยังไม่มีตัวตั้งเวลา ต้องสั่งรันเอง (หรือใส่ใน cron / Prefect schedule ภายหลัง)
 
+## การแจ้งเตือน (Slack)
+
+`src/alerts.py` ใช้แค่ standard library มี 2 ฟังก์ชัน ผู้เรียกคือ `api.py` (ข้อมูลเสีย) และ `monitor.py` (drift, SLO):
+
+```python
+send_alert(title: str, detail: str = '') -> None
+notify_validation_failure(detail: str, payload: dict | None = None) -> None
+```
+
+- ถ้าตั้ง env `SLACK_WEBHOOK_URL`: POST JSON `{"text": "*หัวข้อ*
+รายละเอียด"}` timeout 3 วินาที ตัดรายละเอียดไม่เกิน 1,000 ตัวอักษร
+- ถ้าไม่ตั้ง หรือส่งไม่สำเร็จ (URL ผิด, HTTP error, timeout): พิมพ์ `[ALERT] ...` และเขียนต่อท้าย `logs/alerts.log` (path อิงโฟลเดอร์ที่รันคำสั่ง) ไม่พิมพ์ข้อความ exception เพราะอาจมี webhook URL อยู่
+- **ไม่โยน exception ออกมาเด็ดขาด** เพื่อไม่ให้ Slack ล่มแล้วทำให้ API หรือ monitor ล้มตาม ข้อแลก: ถ้าทุกช่องทางใช้ไม่ได้ การแจ้งเตือนอาจหาย และการส่งเป็นแบบ synchronous ไม่มี retry ผู้เรียกจึงอาจรอเครือข่ายได้ถึง timeout
+- `notify_validation_failure` ใช้หัวข้อ `Invalid prediction request rejected` รายละเอียด validation สูงสุด 700 ตัวอักษร และตัวอย่าง payload สูงสุด 280 ตัวอักษร
+
+**ตั้งค่า:** สร้าง Incoming Webhook ใน Slack workspace ของกลุ่ม แล้วตั้งเป็น env `SLACK_WEBHOOK_URL` **ห้ามใส่ URL ใน repo หรือภาพหน้าจอ** `docker-compose.yml` ส่งตัวแปรนี้เข้า container API ให้แล้ว
+
+```bash
+# ทดสอบโดยไม่ใช้ Slack: ต้องเห็น [ALERT] test hello บนจอและใน logs/alerts.log
+python -c "import sys; sys.path.insert(0, 'src'); import alerts; alerts.send_alert('test', 'hello')"
+
+# ทดสอบ URL เสีย: ต้องเห็นข้อความ fallback และ "caller continued" โดยไม่มี traceback
+SLACK_WEBHOOK_URL=invalid-url python -c "import sys; sys.path.insert(0, 'src'); import alerts; alerts.send_alert('x', 'y'); print('caller continued')"
+```
+
+PowerShell ตั้งค่า webhook โดยไม่ให้ URL แสดงบนจอ:
+
+```powershell
+$hook = Read-Host 'Slack webhook URL' -AsSecureString
+$env:SLACK_WEBHOOK_URL = [System.Net.NetworkCredential]::new('', $hook).Password
+```
+
+exit code 0 ยังยืนยันไม่ได้ว่าข้อความถึง Slack เพราะฟังก์ชันจับ error ไว้ ต้องดูข้อความในช่อง Slack จริง (หลักฐานอยู่ใน [report.md](report.md))
+
 ## ไฟล์ที่เกี่ยวข้อง
 
 | ไฟล์ | หน้าที่ |
@@ -175,5 +199,5 @@ GUIDE บอกว่าถ้าตัวเลขจริงไม่เป�
 | `src/monitor.py` | ตรวจ drift + สถานะระบบ, แจ้งเตือน, คืน exit code |
 | `requirements-monitor.txt` | `evidently==0.7.23` |
 | `evidently/check_drift.py` | สคริปต์ทดลองรอบแรก (เทียบ PSI/KS ของ 2 ไฟล์ drift) `monitor.py` ใช้วิธีเดียวกันและเพิ่ม MAE, เกณฑ์, แจ้งเตือน, exit code |
-| `src/alerts.py` | `send_alert` (ของ thirawatv-sketch) |
-| `demo_data/*.csv` | ข้อมูล 3 สถานการณ์ (ของ TonDanc) |
+| `src/alerts.py` | `send_alert`, `notify_validation_failure` (Slack หรือ `logs/alerts.log`) |
+| `demo_data/*.csv` | ข้อมูล 3 สถานการณ์ (ดู [data.md](data.md#ข้อมูล-demo-demo_data)) |

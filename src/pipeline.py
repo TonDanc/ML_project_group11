@@ -6,7 +6,7 @@
   docker compose up -d mlflow && MLFLOW_TRACKING_URI=http://localhost:5050 python src/pipeline.py --deploy
                                                           # คำสั่งเดียวจนถึงการให้บริการ: API โหลด @champion ใหม่
 
-Exit code (ตาม GUIDE สัญญา D):  0 = ทุกขั้นสำเร็จ,  2 = validate ไม่ผ่าน,  3 = gate ปฏิเสธโมเดล,  1 = crash/deploy ไม่สำเร็จ
+Exit code (ดู docs/pipeline.md):  0 = ทุกขั้นสำเร็จ,  2 = validate ไม่ผ่าน,  3 = gate ปฏิเสธโมเดล,  1 = crash/deploy ไม่สำเร็จ
 
 เทียบกับ TFX ใน Lecture 11:
   prepare_data  = ExampleGen       (prepare.py: ข้อมูลดิบ Olist 8 ไฟล์ -> shipping_distance_duration.csv)

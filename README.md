@@ -1,307 +1,122 @@
-# สินค้าจะมาถึงเมื่อไหร่ — พยากรณ์ระยะเวลาจัดส่ง (Olist)
+# สินค้าจะมาถึงเมื่อไหร่: พยากรณ์ระยะเวลาจัดส่ง (Olist)
 
-พยากรณ์ `delivery_days` (จำนวนวันตั้งแต่สั่งซื้อจนลูกค้าได้รับของ) เป็นงาน Regression
-ใช้ข้อมูล [Olist Brazilian E-commerce](https://kaggle.com/olistbr/brazilian-ecommerce)
+ระบบทำนายจำนวนวันตั้งแต่สั่งซื้อจนลูกค้าได้รับของ (`delivery_days`, Regression) เพื่อแสดง ETA ตอน checkout
+ใช้ข้อมูล [Olist Brazilian E-commerce](https://kaggle.com/olistbr/brazilian-ecommerce) ~95,000 order
 
-## โจทย์
+โมเดลปัจจุบัน (HistGradientBoosting) คลาดเคลื่อนเฉลี่ย **3.39 วัน** เทียบค่าประมาณเดิมของ Olist 10.79 วัน
 
-**Problem:** ลูกค้าไม่ทราบว่าสินค้าจะมาถึงเมื่อไหร่ ระยะเวลาที่แพลตฟอร์มแจ้งในปัจจุบันเผื่อเวลามากเกินไป(คลาดเคลื่อนเฉลี่ยประมาณ 11 วัน) ทำให้ลูกค้าอาจเปลี่ยนใจไม่ซื้อ และเมื่อสินค้ามาช้ากว่าที่คาด ลูกค้าจะร้องเรียนและให้คะแนนร้านค้าต่ำ
-
-**Stakeholder:** ลูกค้า (เห็น ETA ที่ใกล้ความจริง), ผู้ขาย (ได้คะแนนรีวิวดีขึ้นเมื่อส่งตรงตามที่แจ้ง), ฝ่ายบริการลูกค้า (รับข้อร้องเรียนเรื่องส่งช้าน้อยลง)
-
-**ML Solution:** ใช้ข้อมูลที่รู้ตั้งแต่ตอนสั่งซื้อ (ตำแหน่งผู้ซื้อและผู้ขาย ระยะทาง น้ำหนัก ราคา ค่าส่ง เวลาที่สั่ง)
-ทำนายจำนวนวันจัดส่งจริงของแต่ละ order เพื่อแสดง ETA ตอน Checkout
-
-**Business Value:**
-- เพิ่ม Checkout Conversion Rate เพราะไม่แสดงเวลาส่งนานเกินจริง
-- ลดข้อร้องเรียนเรื่องส่งช้ากว่าที่แจ้ง
-- ประโยชน์รอง: นำผลทำนายของ order ที่เข้ามาแล้วมารวมรายรัฐและรายวัน เพื่อให้เห็นแนวโน้มปริมาณพัสดุที่จะเข้าแต่ละพื้นที่ในอีกไม่กี่วันข้างหน้า
-
-**ทำไมตัดเรื่อง "บริษัทขนส่งประเมินทรัพยากรล่วงหน้า" ออกจาก Problem:**
-dataset ไม่มีข้อมูลบริษัทขนส่ง ความจุรถ หรือเส้นทาง และการวางแผนทรัพยากรต้องพยากรณ์ปริมาณงานรายวันรายพื้นที่ ซึ่งเป็นโจทย์อนุกรมเวลา ไม่ใช่การทำนายเวลาส่งรายออเดอร์ที่โมเดลนี้ทำ
-
-## ข้อมูลที่ใช้เทรน
-
-ใช้ `cleaned_data/feature extraction/shipping_distance_duration.csv` ตามที่มีอยู่ ไม่ต้องแก้ไข
-
-- **คอลัมน์ที่ห้ามใช้ถูกกรองอัตโนมัติ:** `order_delivered_customer_date` (ถ้าเอาเข้าโมเดลจะรั่วคำตอบ) และ id ต่างๆ ถูก schema (`strict='filter'`) ตัดทิ้งก่อนเข้าโมเดล
-
-## วิธีรัน
-
-### แบบ Docker (เครื่องเปล่า มีแค่ Docker)
-
-```bash
-docker compose up -d mlflow        # MLflow UI: http://localhost:5050
-docker compose run --rm train      # เทรน -> log ลง MLflow -> register @challenger -> ด่านตรวจ -> @champion
-docker compose up -d api           # API ใช้โมเดล @champion: http://localhost:8000 (/docs, /health)
+```
+ข้อมูลดิบ → prepare.py → Pandera → train (MLflow) → gate → @champion → FastAPI ใน Docker → ผู้ใช้
+                        └── Prefect DAG คุมทั้งเส้น ──┘                       │
+                                       monitor.py (Evidently) ◄── /metrics ─┘ → Slack
+                                       GitHub Actions ตรวจโค้ด/ข้อมูล/โมเดลทุก PR
 ```
 
-ใน container ไม่มี .git ต้องส่งเวอร์ชันโค้ดเข้าไปเอง ไม่งั้น run จะบันทึก `git_commit=unknown`
-- bash: `GIT_COMMIT=$(git rev-parse HEAD) docker compose run --rm train`
-- PowerShell: `$env:GIT_COMMIT = git rev-parse HEAD; docker compose run --rm train`
+## สิ่งที่ต้องมี
 
-### คำสั่งเดียว: ข้อมูลดิบ → เตรียมข้อมูล → ตรวจข้อมูล → เทรน → gate → API ให้บริการ (Prefect DAG)
+- Docker Desktop (เปิดไว้)
+- Python 3.11 (เช่น `conda create -n delivery-eta python=3.11`)
+
+## เริ่มใช้งาน (คำสั่งเดียว)
+
+รันจากโฟลเดอร์หลักของ repo:
 
 ```bash
-pip install -r requirements.txt -r requirements-dag.txt
-docker compose up -d mlflow
-MLFLOW_TRACKING_URI=http://localhost:5050 python src/pipeline.py --deploy
+pip install -r requirements.txt -r requirements-dag.txt -r requirements-monitor.txt
+docker compose up -d mlflow && MLFLOW_TRACKING_URI=http://localhost:5050 python src/pipeline.py --deploy
 ```
 
-PowerShell: `$env:MLFLOW_TRACKING_URI="http://localhost:5050"; python src/pipeline.py --deploy`
-exit 0 = API ให้บริการ `@champion` ตัวใหม่แล้ว, 2 = ข้อมูลไม่ผ่าน, 3 = gate ปฏิเสธ (API ใช้ตัวเดิม) รายละเอียดใน [docs/pipeline.md](docs/pipeline.md)
+PowerShell:
 
-### แบบรันในเครื่อง (Python 3.11)
-
-```bash
-pip install -r requirements.txt
-python src/test_schema.py        # เช็คว่า schema ปฏิเสธข้อมูลเสียได้
-python src/train.py              # log ลง ./mlflow.db (ไม่ต้องเปิด server)
-python src/registry.py promote
-mlflow ui --backend-store-uri sqlite:///mlflow.db   # ดูผล
+```powershell
+pip install -r requirements.txt -r requirements-dag.txt -r requirements-monitor.txt
+docker compose up -d mlflow; $env:MLFLOW_TRACKING_URI="http://localhost:5050"; python src/pipeline.py --deploy
 ```
 
-รันจากโฟลเดอร์หลักของ repo เพราะ path ข้อมูลเขียนแบบ relative
-ถ้าตั้ง `MLFLOW_TRACKING_URI` ไว้ ทุกสคริปต์จะใช้ server นั้นแทน `mlflow.db`
+ครั้งแรกใช้ ~3 นาทีหลังลง package (build image + เทรน) ทำงานตามลำดับ: เตรียมข้อมูลจากไฟล์ดิบ → ตรวจ schema → เทรน 4 โมเดล → gate → เปิด API ด้วยโมเดลที่ผ่าน
 
-## API และ Docker
+| Exit code | ความหมาย |
+|---|---|
+| 0 | สำเร็จ API ให้บริการโมเดลใหม่แล้ว |
+| 2 | ข้อมูลไม่ผ่าน schema หยุดก่อนเทรน |
+| 3 | gate ปฏิเสธโมเดลใหม่ API ใช้ตัวเดิม (ผลปกติเมื่อรันซ้ำด้วยข้อมูลเดิม) |
 
-รันจากโฟลเดอร์หลักของโปรเจกต์:
+## ใช้งาน
+
+| ที่อยู่ | คืออะไร |
+|---|---|
+| http://localhost:8000 | หน้าเว็บทดลองกรอก order |
+| http://localhost:8000/docs | เอกสาร API |
+| http://localhost:8000/health | สถานะและเวอร์ชันโมเดล |
+| http://localhost:8000/metrics | P50/P95 latency และตัวนับคำขอ |
+| http://localhost:5050 | MLflow UI (ผลการทดลอง และทะเบียนโมเดล) |
 
 ```bash
-docker build -t olist-delivery-api .
-docker run --rm -p 8000:8000 olist-delivery-api
-```
-
-ขั้นตอน build จะเทรนโมเดลจาก CSV และบันทึกโมเดลไว้ใน image จากนั้นสามารถเรียกใช้งาน API ได้ที่ `http://localhost:8000` และดูเอกสาร API ได้ที่ `http://localhost:8000/docs`
-
-ตรวจสอบสถานะของ API ได้ด้วย `GET /health`
-
-ตัวอย่างการเรียก `POST /predict`:
-
-```bash
-curl -X POST http://localhost:8000/predict \
-  -H "Content-Type: application/json" \
+curl -X POST http://localhost:8000/predict -H "Content-Type: application/json" \
   -d '{"customer_state":"SP","seller_state":"SP","customer_lat":-23.5,"customer_lng":-46.6,"seller_lat":-23.6,"seller_lng":-46.7,"n_sellers":1,"n_items":2,"total_price":100.0,"total_freight":15.0,"total_weight_g":800.0,"estimated_delivery_days":10,"order_purchase_timestamp":"2018-05-01T10:00:00"}'
+# {"predicted_delivery_days": 2.63, "model_version": "1"}
 ```
 
-ผลลัพธ์จะมีฟิลด์ `predicted_delivery_days` เป็นจำนวนวันที่โมเดลพยากรณ์ หากข้อมูลไม่ผ่าน schema API จะตอบกลับด้วย HTTP 422
+ข้อมูลไม่ผ่าน schema ได้ HTTP 422 และส่งแจ้งเตือน (Slack ถ้าตั้ง `SLACK_WEBHOOK_URL` ไม่ตั้งจะลง `logs/alerts.log`)
 
-ถ้ารันในเครื่องโดยไม่ใช้ Docker ให้ติดตั้ง requirements แล้วเทรนโมเดลก่อน:
+## คำสั่งที่ใช้บ่อย
 
 ```bash
-pip install -r requirements.txt
-python src/train.py
+python tests/check_cases.py --url http://localhost:8000          # test case ปกติ + ข้อมูลเสีย 6 ไฟล์
+python loadtest/run.py --url http://localhost:8000               # วัด P50, P95, throughput
+python src/pipeline.py --data demo_data/bad_orders.csv           # ข้อมูลเสีย: pipeline หยุดที่ validate (exit 2)
+
+python src/monitor.py --current demo_data/normal_orders.csv      # exit 0  ไม่พบ drift
+python src/monitor.py --current demo_data/drift_north.csv        # exit 2  Data Drift
+python src/monitor.py --current demo_data/drift_blackfriday.csv  # exit 3  Concept Drift
+
+python src/registry.py status                                    # ดูทุกเวอร์ชันของโมเดล
+python src/registry.py rollback                                  # ย้อน @champion ไปเวอร์ชันก่อนหน้า แล้ว docker compose restart api
 ```
 
-จากนั้นรัน API ด้วย:
+คำสั่ง `monitor.py` และ `registry.py` ต้องตั้ง `MLFLOW_TRACKING_URI=http://localhost:5050` ให้ชี้ server เดียวกับ API
 
-```bash
-uvicorn api:app --app-dir src --host 0.0.0.0 --port 8000
-```
+**ใช้ Docker อย่างเดียว (ไม่ลง Python):** `docker compose up -d mlflow`, `docker compose run --rm train`, `docker compose up -d api` (เริ่มจาก CSV ที่ commit ไว้ ไม่ผ่าน `prepare.py`) ปิดทั้งหมดด้วย `docker compose down` (ใส่ `-v` ถ้าจะล้าง registry)
 
-## โครงสร้าง
+## เอกสาร
+
+| เอกสาร | เนื้อหา |
+|---|---|
+| [docs/data.md](docs/data.md) | ข้อมูลดิบ, `prepare.py`, คอลัมน์, schema, การแบ่งข้อมูล, ข้อมูล demo |
+| [docs/model.md](docs/model.md) | เทรน, ผลการทดลอง, MLflow tracking, registry, gate, rollback |
+| [docs/pipeline.md](docs/pipeline.md) | Prefect DAG และ `--deploy` |
+| [docs/serving.md](docs/serving.md) | API, metrics, logging, SLO, load test |
+| [docs/monitoring.md](docs/monitoring.md) | Data/Concept Drift, เกณฑ์แจ้งเตือน, นโยบายเทรนใหม่, Slack |
+| [docs/ci.md](docs/ci.md) | GitHub Actions 3 ด้าน |
+| [docs/report.md](docs/report.md) | รายงานโครงงาน: โจทย์, เหตุผลที่เลือกเครื่องมือ, หลักฐานผลทดสอบ |
+
+## เครื่องมือ
+
+| หน้าที่ | เครื่องมือ |
+|---|---|
+| Version Control | Git + GitHub (branch + Pull Request) |
+| Containerization | Docker + docker compose |
+| Data Validation | Pandera (`src/schema.py`) |
+| Experiment Tracking + Model Registry | MLflow (`src/train.py`, `src/registry.py`) |
+| Pipeline Orchestration | Prefect (`src/pipeline.py`) |
+| Model Serving | FastAPI + uvicorn (`src/api.py`) |
+| Monitoring | Evidently + เขียนเอง (`src/monitor.py`) |
+| CI/CD | GitHub Actions (`.github/workflows/ci.yml`) |
+
+เหตุผลที่เลือกแต่ละตัวอยู่ใน [docs/report.md](docs/report.md#8-เหตุผลที่เลือกเครื่องมือ)
+
+## โครงสร้าง repo
 
 ```text
-raw_data + Data prepair/   ข้อมูลดิบ + notebook/สคริปต์ทำความสะอาด
-cleaned_data/              ข้อมูลที่ clean แล้ว
-  feature extraction/      shipping_distance_duration.csv (1 แถว = 1 order) <- ใช้เทรน
-src/                       โค้ดโมเดลและ API
-models/                    โมเดลที่เทรนแล้ว (ไม่ commit, สร้างใหม่ด้วย train.py)
+src/                       โค้ดทั้งหมด (prepare, schema, features, train, registry, api, pipeline, monitor, alerts)
+tests/                     test cases (good_/bad_*.json) และ check_cases.py
+loadtest/                  load test
+demo_data/                 ข้อมูลจำลอง: ปกติ, drift ภาคเหนือ, Black Friday, ข้อมูลเสีย
+raw_data + Data prepair/   ข้อมูลดิบ Olist + notebook/สคริปต์ทำความสะอาดเดิม
+cleaned_data/              CSV ที่ใช้เทรน (สร้างจาก src/prepare.py)
+evidently/                 สคริปต์ทดลอง drift รอบแรกและ HTML report
+docs/                      เอกสาร
+team/                      เอกสารภายในทีม: โจทย์วิชา, แผนแบ่งงาน, to-do
 ```
 
-โมเดลที่เทรนแล้วอยู่ใน MLflow Registry ไม่ได้ commit ลง git
-
-## สถานะโครงงานและการแบ่งงาน
-
-แผนแบ่งงาน ความเป็นเจ้าของไฟล์ ลำดับ merge และสัญญาเชื่อมต่อระหว่างงานอยู่ใน [GUIDE.md](GUIDE.md)
-
-| หน้าที่ | เครื่องมือ | สถานะ |
-|---|---|---|
-| Version Control | Git / GitHub | ใช้งานแล้ว (branch + PR) |
-| Containerization | Docker / docker-compose | ใช้งานแล้ว |
-| Data Validation | Pandera | ใช้งานแล้ว (`src/schema.py`) |
-| Experiment Tracking | MLflow | ใช้งานแล้ว |
-| Model Registry | MLflow Registry (`@champion`, gate, rollback) | ใช้งานแล้ว |
-| Model Serving | FastAPI | ใช้งานแล้ว |
-| Monitoring | Evidently / เขียนเอง | กำลังทำ (`src/monitor.py`) |
-| Pipeline Orchestration | Prefect | ใช้งานแล้ว (`src/pipeline.py --deploy`) |
-| CI/CD | GitHub Actions | กำลังทำ (`.github/workflows/`) |
-
-คำอธิบายรายละเอียดของงานที่กำลังทำจะอยู่ใน `docs/` (monitoring, pipeline, ci, serving-metrics, slack-alert, architecture, report) และจะลิงก์จาก README นี้เมื่อเสร็จ
-
-## ไฟล์ใน `src/`
-
-### `schema.py` — ตรวจสอบข้อมูลขาเข้า (Pandera)
-
-กำหนด `input_schema` สำหรับตรวจข้อมูล 1 order ก่อนส่งเข้าโมเดล ใช้ schema เดียวกันทั้งตอนเทรนและตอนทำ API
-
-| **คอลัมน์** | **กฎ** |
-|---|---|
-| `customer_state`, `seller_state` | ต้องเป็นรหัสรัฐบราซิล 27 รัฐ (`SP`, `RJ`, ...) |
-| `customer_lat/lng`, `seller_lat/lng` | ต้องอยู่ในกรอบประเทศบราซิล (lat -34..6, lng -74..-34) |
-| `n_sellers` | 1–20 |
-| `n_items` | 1–100 |
-| `total_price` | > 0 |
-| `total_freight` | ≥ 0 |
-| `total_weight_g` | 0–500,000 |
-| `estimated_delivery_days` | 0–200 |
-| `order_purchase_timestamp` | ต้องแปลงเป็นวันเวลาได้ |
-
-- ทุกคอลัมน์ห้ามเป็นค่าว่าง และห้ามขาดคอลัมน์ใดคอลัมน์หนึ่ง
-- `coerce=True` จะแปลงชนิดข้อมูลให้เอง เช่น `"12"` เป็น `12` ถ้าแปลงไม่ได้ถือว่าไม่ผ่าน
-- `strict='filter'` จะตัดคอลัมน์เกินทิ้ง เช่น `order_id` และ target ไม่ทำให้ error
-- ข้อมูลไม่ผ่านจะโยน `pandera.errors.SchemaError` หรือ `SchemaErrors` (กรณีแปลงชนิดไม่ได้) ตอนทำ API ต้อง catch ทั้งสองแบบ
-
-### `train.py` — เทรนโมเดล baseline
-
-ลำดับการทำงาน
-
-1. โหลด `cleaned_data/feature extraction/shipping_distance_duration.csv`
-2. ตัด 503 แถวที่ไม่มีพิกัด (zip code ไม่ตรงกับตาราง geolocation) ไม่ impute เพราะตอนใช้งานจริง payload แบบนี้ก็ไม่ผ่าน schema อยู่แล้ว
-3. ตรวจข้อมูลด้วย `input_schema` ถ้าไม่ผ่านสคริปต์จะหยุดก่อนเทรน
-4. แบ่งข้อมูลตามเวลาสั่งซื้อ (`time_split`) เป็น train/val/test 70/15/15 เพื่อให้โมเดลเรียนจากอดีตแล้วทดสอบกับอนาคต
-5. เทรน 4 โมเดล แต่ละตัวเป็น 1 run ใน MLflow (experiment `delivery_eta`):
-   - `dummy_median` (`DummyRegressor`) ทายค่า median ทุกครั้ง ใช้เป็นเกณฑ์ขั้นต่ำ โมเดลจริงต้องชนะตัวนี้ให้ได้
-   - `linear_regression`
-   - `hgb_default`: `HistGradientBoostingRegressor(loss='absolute_error')` ปรับให้ MAE ต่ำสุดโดยตรง เหมาะกับ target ที่เบ้ขวา (ส่วนใหญ่ 7–13 วัน แต่ค่าสูงสุดถึง 208 วัน)
-   - `hgb_bigger`: HGB ที่ใหญ่ขึ้น (`max_iter=300, learning_rate=0.05, max_leaf_nodes=63`) เพื่อทดสอบว่า tuning ช่วยไหม
-6. พิมพ์ MAE ของค่าประมาณเดิมของ Olist (`estimated_delivery_days`) ไว้อ้างอิง
-7. เลือกตัวที่ **val** MAE ต่ำสุด (ไม่เลือกจาก test) แล้วลงทะเบียนเป็นเวอร์ชันใหม่ของ `delivery_eta` พร้อมติดป้าย `@challenger`
-
-ตั้ง `CANDIDATES=dummy_median,linear_regression` เพื่อเทรนเฉพาะบางตัวได้ (ใช้สร้างโมเดล "รุ่นเก่า" ตอนสาธิต rollback)
-
-ฟังก์ชันหลัก
-
-- `add_features(df)` สร้างฟีเจอร์จากข้อมูลดิบ ได้แก่ `distance_km` (ระยะทางเส้นตรงแบบ haversine), `same_state`, `purchase_dow`, `purchase_month` และ `purchase_hour`
-- `make_pipeline(model)` รวม `add_features`, one-hot encoding ของรัฐ และโมเดล ไว้ใน sklearn `Pipeline` ตัวเดียว
-- `time_split(df)` แบ่งข้อมูลตามเวลา
-- `load_splits()` โหลด ตรวจ schema และแบ่งข้อมูล (`registry.py` ใช้ตัวเดียวกันเพื่อให้ได้ test ชุดเดียวกัน)
-
-**ป้องกัน Training-Serving Skew:** การแปลงข้อมูลทั้งหมดอยู่ใน Pipeline ที่บันทึกลงไฟล์ `.joblib` เดียว ตอนทำ API ให้ส่งข้อมูลดิบที่ผ่าน schema เข้า `pipe.predict()` ได้เลย ไม่ต้องเขียนโค้ดแปลงข้อมูลซ้ำ
-
-ผลลัพธ์ล่าสุด (MAE หน่วยเป็นวัน)
-
-| **โมเดล** | **val** | **test** |
-|---|---:|---:|
-| ค่าประมาณของ Olist | 15.00 | 10.79 |
-| Dummy (ทาย median) | 5.67 | 5.06 |
-| Linear Regression | 5.38 | 4.96 |
-| Random Forest (รุ่นแรก, เลิกใช้แล้ว) | 4.62 | 4.07 |
-| **HistGradientBoosting (absolute_error)** | **4.09** | **3.39** |
-
-**ทำไมต้องมี DummyRegressor**
-
-Dummy คือโมเดลที่ไม่เรียนรู้อะไรเลย แค่ทายค่า median ของ train (11 วัน) ให้ทุก order ใช้เป็นเกณฑ์ขั้นต่ำ
-
-- MAE ตัวเลขเดียวบอกไม่ได้ว่าดีหรือไม่ดี ต้องมีตัวเทียบถึงจะรู้ว่าโมเดลเรียนรู้อะไรไปจริง
-- ค่าประมาณของ Olist ใช้เทียบไม่ได้ เพราะเผื่อเวลาเยอะจน Dummy ยังชนะ
-- ตรงกับเกณฑ์วิชาที่ต้องมี Baseline และการทดลองเปรียบเทียบ
-- ใช้จับบั๊กได้ ถ้าโมเดลจริงได้ MAE พอๆ กับ Dummy แปลว่าฟีเจอร์หาย ข้อมูลเสีย หรือ pipeline ผิด ใช้เป็นด่านตรวจใน Evaluator ได้
-- ใช้ median ไม่ใช้ mean เพราะวัดผลด้วย MAE (ค่าคงที่ที่ทำให้ MAE ต่ำสุดคือ median) และ target เบ้ขวา mean จะถูกค่าสูงผิดปกติดึงขึ้น
-
-**ทำไมเลือก HistGradientBoosting แทน Random Forest**
-
-| | **Random Forest** | **HistGradientBoosting** |
-|---|---:|---:|
-| test MAE | 4.07 | 3.39 |
-| เวลาเทรน | ~1.5 นาที | ~2 วินาที |
-| ขนาดไฟล์โมเดล | 47 MB | 0.4 MB |
-
-ไฟล์เล็กและทำนายเร็ว ช่วยให้ผ่าน Gating Metric เรื่อง Latency < 200 ms ตอนทำ API 
-ใช้ `loss='absolute_error'` เพื่อให้โมเดลปรับ MAE ต่ำสุดโดยตรง ค่าที่สูงผิดปกติจึงไม่ดึงผลทำนายไปมาก และต้องตั้ง `OneHotEncoder(sparse_output=False)` เพราะ HistGradientBoosting รับข้อมูลแบบ sparse ไม่ได้
-
-**อ่านผลอย่างไร**
-- ค่าประมาณของ Olist ตั้งใจเผื่อเวลาไว้เยอะ (ส่งถึงก่อนกำหนดเกือบทุก order) จึงไม่ใช่ตัวเทียบที่ยุติธรรม ตัวเทียบที่ถูกต้องคือ Dummy
-- HistGradientBoosting ทำ MAE ต่ำกว่า Dummy ประมาณ 33% และต่ำกว่า Random Forest ประมาณ 17% เทรนเสร็จในไม่กี่วินาที และไฟล์โมเดลเล็กกว่า Random Forest ประมาณ 100 เท่า
-- ประมาณ 30% ของ order ใน test ส่งถึงช้ากว่าที่โมเดลทำนาย เพราะการปรับ MAE ให้ต่ำสุดคือการทายค่ากลาง ถ้าธุรกิจอยากลดโอกาสส่งช้ากว่าที่แจ้ง ให้เปลี่ยนเป็น `loss='quantile'` เช่น `quantile=0.8`
-- ค่า delivery_days เฉลี่ยลดลงตามเวลา (train 13.3 → val 10.4 → test 7.9 วัน) แปลว่ามี drift ตามช่วงเวลาอยู่แล้ว ควรเทรนใหม่เป็นระยะ
-
-### MLflow — Experiment Tracking + Model Registry
-
-**ทุก run บันทึกครบ 6 อย่าง**
-
-| สิ่งที่ต้องบันทึก | เก็บที่ไหนใน run |
-|---|---|
-| เวอร์ชันโค้ด | tag `git_commit` |
-| เวอร์ชันข้อมูล | param `data_md5` (md5 ของ CSV), `data_rows`, `n_train/n_val/n_test`, `split` |
-| ไฮเปอร์พารามิเตอร์ | params ทั้งหมดของโมเดล (`get_params()`) |
-| ตัวชี้วัด | `val_mae`, `val_rmse`, `test_mae`, `test_rmse` |
-| ไฟล์ผลลัพธ์ | โมเดล (`model.skops`), `features.py`, `input_example.json` |
-| สภาพแวดล้อม | tag `python`, `platform` และ `requirements.txt` / `conda.yaml` ที่ MLflow สร้างคู่กับโมเดล |
-
-เปรียบเทียบข้ามการทดลอง: เปิด MLflow UI → experiment `delivery_eta` → เลือกหลาย run → Compare
-
-**ผลการทดลองและการตัดสินใจ**
-
-| run | val MAE | test MAE | ตัดสินใจ |
-|---|---|---|---|
-| dummy_median | 5.671 | 5.057 | เกณฑ์ขั้นต่ำ |
-| linear_regression | 5.377 | 4.962 | ดีกว่า dummy นิดเดียว ความสัมพันธ์ไม่เป็นเส้นตรง |
-| **hgb_default** | **4.086** | **3.389** | **เลือกตัวนี้** |
-| hgb_bigger | 4.092 | 3.412 | ใหญ่ขึ้น ช้าขึ้น แต่ไม่ดีขึ้น → tuning ไม่คุ้ม |
-
-**`registry.py` — สถานะโมเดลและด่านตรวจ**
-
-สถานะเก็บเป็น alias ของ MLflow: `@champion` = ตัวที่ API ใช้อยู่, `@challenger` = ตัวใหม่ล่าสุดที่รอตรวจ
-และ tag ของแต่ละเวอร์ชัน: `gate` (passed/failed), `gate_reason`, `test_mae`, `p95_ms`, `rolled_back`
-
-```bash
-python src/registry.py status          # ดูทุกเวอร์ชัน
-python src/registry.py promote         # ด่านตรวจ: ผ่าน -> @champion, ไม่ผ่าน -> exit 1 (ใช้ใน CI ได้)
-python src/registry.py rollback [VER]  # @champion ย้อนไปเวอร์ชันก่อนหน้าที่เคยผ่านด่าน (หรือ VER)
-```
-
-ถ้าใช้ Docker ให้ขึ้นต้นด้วย `docker compose run --rm train` เช่น `docker compose run --rm train python src/registry.py status`
-
-ด่านตรวจก่อนอนุมัติ (Gating Metric) วัดบน test ชุดเดียวกันทั้งตัวใหม่และตัวเดิม ต้องผ่านทุกข้อ:
-- MAE ต่ำกว่า dummy (median)
-- MAE ต่ำกว่า `@champion` ตัวเดิมอย่างน้อย 5%
-- p95 latency ของการทำนาย 1 order < 200 ms
-
-API โหลด `@champion` ตอนเริ่มทำงาน หลัง promote/rollback ให้ `docker compose restart api`
-`/health` และ `/predict` บอกเวอร์ชันโมเดลที่ใช้อยู่
-
-**สาธิต (เริ่มจากว่าง: `docker compose down -v`)**
-
-```bash
-docker compose up -d mlflow
-CANDIDATES=dummy_median,linear_regression docker compose run --rm train   # v1 = linear "รุ่นเก่า" -> ผ่าน -> @champion
-docker compose run --rm train      # v2 = hgb, ดีกว่า v1 เกิน 5% -> ผ่าน -> @champion
-docker compose run --rm train      # v3 = เทรนซ้ำข้อมูลเดิม ไม่ดีขึ้น 5% -> REJECTED (exit 1), API ยังใช้ v2
-docker compose up -d api && curl localhost:8000/health    # version 2
-docker compose run --rm train python src/registry.py rollback   # @champion v2 -> v1
-docker compose restart api && curl localhost:8000/health  # version 1
-```
-
-PowerShell: บรรทัดที่ 2 ใช้ `$env:CANDIDATES = "dummy_median,linear_regression"; docker compose run --rm train`
-แล้ว `$env:CANDIDATES = ""` ก่อนรันบรรทัดที่ 3 ไม่งั้นจะเทรนแค่ linear อีก และใช้ `curl.exe` แทน `curl`
-
-ดูผลใน MLflow UI ที่ http://localhost:5050 (Experiments → `delivery_eta` เทียบ run, Models → `delivery_eta` ดูเวอร์ชันและ alias)
-
-### `test_schema.py` — เช็คว่า schema ทำงาน
-
-สร้าง payload ที่ถูกต้อง 1 แถว แล้วแก้ทีละจุดเพื่อยืนยันว่า schema ปฏิเสธข้อมูลเหล่านี้ได้จริง: ขาดคอลัมน์, ค่า null, รหัสรัฐผิด, น้ำหนักติดลบ, พิกัดนอกบราซิล และชนิดข้อมูลผิด
-
-รันผ่านจะพิมพ์ `schema checks ok` ถ้าไม่ผ่านจะเกิด `AssertionError`
-
-### `api.py` — ให้บริการพยากรณ์ผ่าน FastAPI
-
-รับข้อมูล order ผ่าน `POST /predict` ตรวจสอบข้อมูลด้วย `input_schema` แล้วส่งข้อมูลเข้าโมเดลที่บันทึกไว้เพื่อพยากรณ์ `delivery_days`
-
-มี endpoint สำหรับตรวจสอบสถานะระบบ:
-
-- `GET /health` — ตรวจว่าโมเดลถูกโหลดพร้อมใช้งานหรือไม่
-- `POST /predict` — รับข้อมูล order และคืนค่าจำนวนวันที่พยากรณ์
-
-โมเดลถูกโหลดตอนเริ่มต้น API และใช้ Pipeline เดียวกับตอนเทรน จึงไม่ต้องเขียนขั้นตอน Feature Engineering ซ้ำใน API
-
-## สิ่งที่ยังไม่ได้ทำ
-
-- ยังไม่แยกช่วง Black Friday ออกไปใช้ทดสอบ Concept Drift (กำลังทำใน `src/monitor.py` ดู GUIDE.md)
-- ทางเลือกเพื่อลดโอกาสส่งช้ากว่าที่แจ้ง (ถ้าทีมตัดสินใจทำ):
-  - เปลี่ยนเป็น `loss='quantile', quantile=0.8`
-  - หรือเทรน 2 ตัว (quantile 0.2 และ 0.8) แล้วแสดง ETA เป็นช่วงวันที่
-- ฟีเจอร์ที่อาจช่วยให้แม่นขึ้น (อยู่นอกขอบเขต Baseline):
-  - หมวดสินค้า
-  - ค่าเฉลี่ยเวลาส่งในอดีตของ seller ต้องคำนวณจากข้อมูลก่อนวันสั่งเท่านั้น ไม่งั้นข้อมูลรั่ว
+โมเดลที่เทรนแล้วอยู่ใน MLflow registry (volume `mlflow-data`) ไม่ได้ commit ลง git
